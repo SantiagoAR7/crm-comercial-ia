@@ -6,6 +6,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { installationsRouter } from './routes/installations.js';
 import { commercialAiRouter } from './routes/commercial-ai.js';
+import { prospectingRouter } from './routes/prospecting.js';
 import { settingsRouter } from './routes/settings.js';
 import { authRouter } from './routes/auth.js';
 import { biAuthRouter } from './routes/bi-auth.js';
@@ -47,6 +48,7 @@ app.use('/api/installations', installationsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/commercial-ai', commercialAiRouter);
+app.use('/api/prospecting', prospectingRouter);
 app.use('/api/settings', settingsRouter);
 
 app.use((err, _req, res, _next) => {

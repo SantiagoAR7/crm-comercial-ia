@@ -10,7 +10,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.cliente-crm-api-ia.rule=Host(`crm.example.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.cliente-crm-api-ia.rule=Host(`crm.iadavofrio.com`) && PathPrefix(`/api`)"
       - "traefik.http.routers.cliente-crm-api-ia.priority=100"
       - "traefik.http.routers.cliente-crm-api-ia.entrypoints=websecure"
       - "traefik.http.routers.cliente-crm-api-ia.tls.certresolver=letsencrypt"
@@ -20,7 +20,7 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: "https://crm.example.com"
+        NEXT_PUBLIC_API_URL: "https://crm.iadavofrio.com"
     restart: unless-stopped
     container_name: cliente-crm-web
     depends_on:
@@ -29,7 +29,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.cliente-crm-web-ia.rule=Host(`crm.example.com`)"
+      - "traefik.http.routers.cliente-crm-web-ia.rule=Host(`crm.iadavofrio.com`)"
       - "traefik.http.routers.cliente-crm-web-ia.priority=10"
       - "traefik.http.routers.cliente-crm-web-ia.entrypoints=websecure"
       - "traefik.http.routers.cliente-crm-web-ia.tls.certresolver=letsencrypt"
