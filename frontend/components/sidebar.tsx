@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { Bot, Building2, LayoutDashboard, Megaphone, Search, Settings, Target, LogOut, X } from 'lucide-react';
@@ -33,9 +34,11 @@ export function Sidebar({ mobile = false, email = '', onClose }: SidebarProps) {
   return (
     <aside className={`${mobile ? 'fixed inset-y-0 left-0 z-50 flex' : 'fixed inset-y-0 left-0 hidden lg:flex'} w-72 flex-col border-r border-blue-900/20 bg-[#082b5b] px-4 py-5 text-white shadow-xl`}>
       <div className="flex items-center gap-3 px-2">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-xs font-black text-[#082b5b] shadow-sm">CRM</div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
+          <Image src="/icon.png" alt="Davofrío" width={42} height={42} priority />
+        </div>
         <div className="min-w-0">
-          <p className="text-lg font-extrabold tracking-wide">CLIENTE</p>
+          <p className="text-lg font-extrabold tracking-wide">DAVOFRÍO</p>
           <p className="text-xs font-medium text-blue-200">CRM comercial</p>
         </div>
         {mobile && <button onClick={onClose} aria-label="Cerrar menú" className="ml-auto rounded-lg p-2 text-blue-100 hover:bg-white/10"><X size={20} /></button>}

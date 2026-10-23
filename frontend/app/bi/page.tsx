@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
@@ -309,9 +310,11 @@ export default function BiPage() {
       <header className="border-b border-slate-800 bg-slate-950 px-5 py-4 text-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-sm font-black text-slate-950">BI</div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white p-1">
+              <Image src="/icon.png" alt="Davofrío" width={38} height={38} priority />
+            </div>
             <div>
-              <p className="text-base font-extrabold tracking-wide">CLIENTE BI</p>
+              <p className="text-base font-extrabold tracking-wide">DAVOFRÍO BI</p>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">Expertis SQL Server</p>
             </div>
           </div>

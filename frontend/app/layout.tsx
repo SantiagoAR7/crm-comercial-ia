@@ -3,8 +3,8 @@ import './globals.css';
 import { AppShell } from '@/components/app-shell';
 
 export const metadata: Metadata = {
-  title: 'Cliente CRM',
-  description: 'CRM comercial y campañas automatizadas de Cliente',
+  title: 'Davofrio CRM',
+  description: 'CRM comercial y campañas automatizadas de Davofrio',
 };
 
 export default function RootLayout({

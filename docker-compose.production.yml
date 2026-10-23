@@ -1,7 +1,7 @@
 services:
   crm-api:
     build: ./backend
-    container_name: cliente-crm-api
+    container_name: davofrio-crm-api
     restart: unless-stopped
     env_file: ./backend/.env.production
     volumes:
@@ -10,11 +10,11 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.cliente-crm-api-ia.rule=Host(`crm.iadavofrio.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.cliente-crm-api-ia.priority=100"
-      - "traefik.http.routers.cliente-crm-api-ia.entrypoints=websecure"
-      - "traefik.http.routers.cliente-crm-api-ia.tls.certresolver=letsencrypt"
-      - "traefik.http.services.cliente-crm-api-ia.loadbalancer.server.port=4000"
+      - "traefik.http.routers.davofrio-crm-api-ia.rule=Host(`crm.iadavofrio.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.davofrio-crm-api-ia.priority=100"
+      - "traefik.http.routers.davofrio-crm-api-ia.entrypoints=websecure"
+      - "traefik.http.routers.davofrio-crm-api-ia.tls.certresolver=letsencrypt"
+      - "traefik.http.services.davofrio-crm-api-ia.loadbalancer.server.port=4000"
 
   crm-web:
     build:
@@ -22,18 +22,18 @@ services:
       args:
         NEXT_PUBLIC_API_URL: "https://crm.iadavofrio.com"
     restart: unless-stopped
-    container_name: cliente-crm-web
+    container_name: davofrio-crm-web
     depends_on:
       - crm-api
     networks:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.cliente-crm-web-ia.rule=Host(`crm.iadavofrio.com`)"
-      - "traefik.http.routers.cliente-crm-web-ia.priority=10"
-      - "traefik.http.routers.cliente-crm-web-ia.entrypoints=websecure"
-      - "traefik.http.routers.cliente-crm-web-ia.tls.certresolver=letsencrypt"
-      - "traefik.http.services.cliente-crm-web-ia.loadbalancer.server.port=3000"
+      - "traefik.http.routers.davofrio-crm-web-ia.rule=Host(`crm.iadavofrio.com`)"
+      - "traefik.http.routers.davofrio-crm-web-ia.priority=10"
+      - "traefik.http.routers.davofrio-crm-web-ia.entrypoints=websecure"
+      - "traefik.http.routers.davofrio-crm-web-ia.tls.certresolver=letsencrypt"
+      - "traefik.http.services.davofrio-crm-web-ia.loadbalancer.server.port=3000"
 
 networks:
   dokploy-network:

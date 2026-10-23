@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar';
@@ -27,8 +28,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar email={email} />
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur lg:hidden">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#082b5b] text-[10px] font-black text-white">CRM</div>
-          <div><p className="text-sm font-extrabold text-[#082b5b]">CLIENTE</p><p className="text-[11px] text-slate-500">CRM comercial</p></div>
+          <Image src="/icon.png" alt="Davofrío" width={36} height={36} />
+          <div><p className="text-sm font-extrabold text-[#082b5b]">DAVOFRÍO</p><p className="text-[11px] text-slate-500">CRM comercial</p></div>
         </div>
         <button onClick={() => setMenuOpen(true)} aria-label="Abrir menú" className="rounded-lg border border-slate-200 p-2 text-slate-700"><Menu size={21} /></button>
       </header>

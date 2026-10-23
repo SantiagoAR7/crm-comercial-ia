@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Image from 'next/image';
 import { LockKeyhole, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
@@ -37,8 +38,10 @@ export default function LoginPage() {
       <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-red-100/70 blur-3xl" />
       <form onSubmit={submit} className="relative w-full max-w-md rounded-3xl border border-white bg-white/95 p-8 shadow-2xl shadow-blue-950/10 sm:p-10">
         <div className="mb-7 flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#082b5b] text-sm font-black tracking-wide text-white shadow-md">CRM</div>
-          <div><p className="text-xl font-extrabold tracking-wide text-[#082b5b]">CLIENTE</p><p className="text-sm font-medium text-slate-500">CRM comercial</p></div>
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-1 shadow-md ring-1 ring-slate-100">
+            <Image src="/icon.png" alt="Davofrío" width={58} height={58} priority />
+          </div>
+          <div><p className="text-xl font-extrabold tracking-wide text-[#082b5b]">DAVOFRÍO</p><p className="text-sm font-medium text-slate-500">CRM comercial</p></div>
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.15em] text-blue-800"><LockKeyhole size={13} />Acceso privado</div>
         <h1 className="mt-4 text-3xl font-bold text-slate-950">Bienvenido</h1>

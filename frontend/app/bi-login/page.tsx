@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Image from 'next/image';
 import { BarChart3, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 export default function BiLoginPage() {
@@ -35,9 +36,11 @@ export default function BiLoginPage() {
     <div className="grid min-h-screen bg-slate-950 text-white lg:grid-cols-[1.1fr_0.9fr]">
       <section className="flex min-h-[42vh] flex-col justify-between bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.28),transparent_32%),linear-gradient(135deg,#061529,#0f233f_58%,#121826)] p-8 sm:p-12">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-sm font-black text-slate-950">BI</div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white p-1.5">
+            <Image src="/icon.png" alt="Davofrío" width={42} height={42} priority />
+          </div>
           <div>
-            <p className="text-lg font-extrabold tracking-wide">CLIENTE</p>
+            <p className="text-lg font-extrabold tracking-wide">DAVOFRÍO</p>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">Business Intelligence</p>
           </div>
         </div>
