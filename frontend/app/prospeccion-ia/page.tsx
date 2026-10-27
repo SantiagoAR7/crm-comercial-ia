@@ -107,6 +107,9 @@ type EmailStatus = {
   enabled: boolean;
   pollEnabled: boolean;
   fromAddress: string;
+  provider?: string;
+  graphConfigured?: boolean;
+  graphMailbox?: string;
   smtpConfigured: boolean;
   imapConfigured: boolean;
   pollIntervalSeconds: number;
@@ -884,7 +887,7 @@ export default function AiProspectingPage() {
                 <button
                   type="button"
                   onClick={pollEmailReplies}
-                  disabled={pollingEmail || !emailStatus?.enabled || !emailStatus?.imapConfigured}
+                  disabled={pollingEmail || !emailStatus?.enabled || !(emailStatus?.graphConfigured || emailStatus?.imapConfigured)}
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {pollingEmail ? <Loader2 className="animate-spin" size={16} /> : <Reply size={16} />}
@@ -896,11 +899,13 @@ export default function AiProspectingPage() {
               <span className={`rounded-lg px-3 py-2 ${emailStatus?.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                 Envío {emailStatus?.enabled ? 'activo' : 'pendiente'}
               </span>
-              <span className={`rounded-lg px-3 py-2 ${emailStatus?.smtpConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                SMTP {emailStatus?.smtpConfigured ? 'configurado' : 'sin clave'}
+              <span className={`rounded-lg px-3 py-2 ${(emailStatus?.graphConfigured || emailStatus?.smtpConfigured) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                {emailStatus?.provider === 'microsoft-graph'
+                  ? 'Graph envío activo'
+                  : `SMTP ${emailStatus?.smtpConfigured ? 'configurado' : 'sin clave'}`}
               </span>
-              <span className={`rounded-lg px-3 py-2 ${emailStatus?.imapConfigured && emailStatus?.pollEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                Respuestas {emailStatus?.imapConfigured && emailStatus?.pollEnabled ? `cada ${emailStatus.pollIntervalSeconds}s` : 'pendientes'}
+              <span className={`rounded-lg px-3 py-2 ${(emailStatus?.graphConfigured || emailStatus?.imapConfigured) && emailStatus?.pollEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                Respuestas {(emailStatus?.graphConfigured || emailStatus?.imapConfigured) && emailStatus?.pollEnabled ? `cada ${emailStatus.pollIntervalSeconds}s` : 'pendientes'}
               </span>
             </div>
           </section>

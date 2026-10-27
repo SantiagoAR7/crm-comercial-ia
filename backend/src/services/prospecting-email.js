@@ -24,6 +24,7 @@ function number(value, fallback) {
 
 export function emailConfig() {
   const fromAddress = clean(process.env.EMAIL_FROM_ADDRESS || process.env.SMTP_USER || 'transformaciondigital@davofrio.com').toLowerCase();
+  const graphMailbox = clean(process.env.MICROSOFT_MAILBOX || fromAddress).toLowerCase();
   return {
     enabled: bool(process.env.PROSPECTING_EMAIL_ENABLED, false),
     pollEnabled: bool(process.env.PROSPECTING_EMAIL_POLL_ENABLED, false),
@@ -45,15 +46,32 @@ export function emailConfig() {
       user: clean(process.env.IMAP_USER || fromAddress),
       pass: clean(process.env.IMAP_PASS || process.env.SMTP_PASS || ''),
     },
+    graph: {
+      enabled: bool(process.env.MICROSOFT_GRAPH_ENABLED, false),
+      tenantId: clean(process.env.MICROSOFT_TENANT_ID || ''),
+      clientId: clean(process.env.MICROSOFT_CLIENT_ID || ''),
+      clientSecret: clean(process.env.MICROSOFT_CLIENT_SECRET || ''),
+      mailbox: graphMailbox,
+    },
   };
 }
 
 export function emailStatus() {
   const config = emailConfig();
+  const graphConfigured = Boolean(
+    config.graph.enabled &&
+    config.graph.tenantId &&
+    config.graph.clientId &&
+    config.graph.clientSecret &&
+    config.graph.mailbox
+  );
   return {
     enabled: config.enabled,
     pollEnabled: config.pollEnabled,
     fromAddress: config.fromAddress,
+    provider: graphConfigured ? 'microsoft-graph' : 'smtp-imap',
+    graphConfigured,
+    graphMailbox: config.graph.mailbox,
     smtpConfigured: Boolean(config.smtp.host && config.smtp.user && config.smtp.pass),
     imapConfigured: Boolean(config.imap.host && config.imap.user && config.imap.pass),
     pollIntervalSeconds: config.pollIntervalSeconds,
@@ -76,6 +94,24 @@ function formatAddress(name, address) {
 
 function normalizeNewlines(value) {
   return String(value || '').replace(/\r?\n/g, '\r\n');
+}
+
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+    .trim();
 }
 
 function buildMessage({ fromName, fromAddress, to, subject, body, messageId, prospectId, listId, trackingToken }) {
@@ -185,16 +221,139 @@ async function connectSmtp(config) {
   return client;
 }
 
+let graphTokenCache = null;
+
+function graphConfigured(config) {
+  return Boolean(
+    config.graph.enabled &&
+    config.graph.tenantId &&
+    config.graph.clientId &&
+    config.graph.clientSecret &&
+    config.graph.mailbox
+  );
+}
+
+async function graphAccessToken(config) {
+  if (graphTokenCache?.token && graphTokenCache.expiresAt > Date.now() + 60000) {
+    return graphTokenCache.token;
+  }
+
+  const body = new URLSearchParams({
+    client_id: config.graph.clientId,
+    client_secret: config.graph.clientSecret,
+    scope: 'https://graph.microsoft.com/.default',
+    grant_type: 'client_credentials',
+  });
+
+  const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(config.graph.tenantId)}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    signal: AbortSignal.timeout(30000),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || `Microsoft Graph token HTTP ${response.status}`);
+  }
+
+  graphTokenCache = {
+    token: payload.access_token,
+    expiresAt: Date.now() + Math.max(60, Number(payload.expires_in || 3600)) * 1000,
+  };
+  return graphTokenCache.token;
+}
+
+async function graphRequest(config, url, options = {}) {
+  const token = await graphAccessToken(config);
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    signal: options.signal || AbortSignal.timeout(45000),
+  });
+
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { error: text };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || payload?.error || `Microsoft Graph HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function sendGraphEmail(config, { prospect, message, subject, body, to, trackingToken, trackedSubject }) {
+  const recipient = clean(to || prospect.email).toLowerCase();
+  if (!recipient) throw new Error('El prospecto no tiene email destino.');
+
+  const localMessageId = `<${trackingToken.toLowerCase()}-${randomUUID()}@iadavofrio.com>`;
+  await graphRequest(
+    config,
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(config.graph.mailbox)}/sendMail`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        message: {
+          subject: trackedSubject,
+          body: {
+            contentType: 'Text',
+            content: body || message.body,
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: recipient,
+              },
+            },
+          ],
+          internetMessageHeaders: [
+            { name: 'X-Davofrio-Prospect-Id', value: String(prospect.id) },
+            { name: 'X-Davofrio-List-Id', value: String(prospect.list_id || '') },
+            { name: 'X-Davofrio-Tracking-Token', value: trackingToken },
+            { name: 'X-Davofrio-Local-Message-Id', value: localMessageId },
+          ],
+        },
+        saveToSentItems: true,
+      }),
+    }
+  );
+
+  return {
+    to: recipient,
+    from: config.graph.mailbox,
+    subject: trackedSubject,
+    body: body || message.body,
+    messageId: localMessageId,
+    trackingToken,
+    provider: 'microsoft-graph',
+  };
+}
+
 export async function sendProspectingEmail({ prospect, message, subject, body, to }) {
   const config = emailConfig();
   if (!config.enabled) throw new Error('El envio de emails de prospeccion esta desactivado.');
-  if (!config.smtp.host || !config.smtp.user || !config.smtp.pass) {
-    throw new Error('Faltan credenciales SMTP para enviar emails.');
-  }
 
   const trackingToken = `DVF-${message.id.slice(0, 8)}`;
   const cleanSubject = escapeHeader(subject || message.subject || `${prospect.company_name} | DAVOFRIO`);
   const trackedSubject = cleanSubject.includes(`[${trackingToken}]`) ? cleanSubject : `${cleanSubject} [${trackingToken}]`;
+
+  if (graphConfigured(config)) {
+    return sendGraphEmail(config, { prospect, message, subject, body, to, trackingToken, trackedSubject });
+  }
+
+  if (!config.smtp.host || !config.smtp.user || !config.smtp.pass) {
+    throw new Error('Faltan credenciales SMTP para enviar emails.');
+  }
+
   const messageId = `<${trackingToken.toLowerCase()}-${randomUUID()}@iadavofrio.com>`;
   const recipient = clean(to || prospect.email).toLowerCase();
   if (!recipient) throw new Error('El prospecto no tiene email destino.');
@@ -230,6 +389,7 @@ export async function sendProspectingEmail({ prospect, message, subject, body, t
     body: body || message.body,
     messageId,
     trackingToken,
+    provider: 'smtp',
   };
 }
 
@@ -331,8 +491,10 @@ function extractTrackingToken(email) {
   const haystack = [
     email.subject,
     email.headers['x-davofrio-tracking-token'],
+    email.headers['x-davofrio-local-message-id'],
     email.headers['in-reply-to'],
     email.headers.references,
+    email.body,
   ].filter(Boolean).join(' ');
   const match = haystack.match(/DVF-[a-f0-9]{8}/i) || haystack.match(/dvf-[a-f0-9]{8}/i);
   return match ? match[0].toUpperCase() : '';
@@ -350,7 +512,7 @@ async function findOutboundByToken(trackingToken) {
   return data?.[0] || null;
 }
 
-async function recordInboundEmail({ uid, email, trackingToken, outbound }) {
+async function recordInboundEmail({ uid, providerMessageId, email, trackingToken, outbound, provider = 'imap' }) {
   const metadata = outbound.metadata || {};
   const prospectId = outbound.prospect_id;
   const messageId = typeof metadata.messageId === 'string' ? metadata.messageId : null;
@@ -361,7 +523,9 @@ async function recordInboundEmail({ uid, email, trackingToken, outbound }) {
     description: `Respuesta recibida por email: ${email.subject || 'Sin asunto'}.`,
     metadata: {
       emailDirection: 'inbound',
+      provider,
       imapUid: uid,
+      providerMessageId,
       from: email.from,
       subject: email.subject,
       body: email.body.slice(0, 12000),
@@ -380,9 +544,102 @@ async function recordInboundEmail({ uid, email, trackingToken, outbound }) {
   }
 }
 
+function graphHeaders(headers = []) {
+  return Object.fromEntries(
+    headers
+      .map((header) => [clean(header.name).toLowerCase(), clean(header.value)])
+      .filter(([name]) => name)
+  );
+}
+
+function graphEmail(message) {
+  const headers = graphHeaders(message.internetMessageHeaders || []);
+  const from = clean(message.from?.emailAddress?.address || headers.from).toLowerCase();
+  const content = message.body?.content || message.bodyPreview || '';
+  return {
+    headers,
+    from,
+    subject: clean(message.subject || ''),
+    body: message.body?.contentType === 'html' ? stripHtml(content) : clean(content),
+  };
+}
+
+function cappedSeenIds(ids) {
+  return Array.from(ids).slice(-500);
+}
+
+async function pollGraphInbox(config) {
+  const state = await readState();
+  const seenIds = new Set(Array.isArray(state.graphSeenMessageIds) ? state.graphSeenMessageIds : []);
+  const mailbox = encodeURIComponent(config.graph.mailbox);
+  const params = new URLSearchParams({
+    '$top': '25',
+    '$orderby': 'receivedDateTime desc',
+    '$select': 'id,subject,from,receivedDateTime,bodyPreview,body,internetMessageHeaders',
+  });
+
+  const payload = await graphRequest(
+    config,
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/mailFolders/inbox/messages?${params.toString()}`,
+    { method: 'GET' }
+  );
+  const messages = Array.isArray(payload?.value) ? payload.value : [];
+
+  if (!state.graphInitializedAt && !config.processBacklog) {
+    messages.forEach((message) => {
+      if (message.id) seenIds.add(message.id);
+    });
+    await writeState({
+      ...state,
+      graphSeenMessageIds: cappedSeenIds(seenIds),
+      graphInitializedAt: new Date().toISOString(),
+      graphCheckedAt: new Date().toISOString(),
+    });
+    return { processed: 0, skipped: 0, initialized: true, provider: 'microsoft-graph' };
+  }
+
+  let processed = 0;
+  let skipped = 0;
+
+  for (const message of messages.reverse()) {
+    if (!message.id || seenIds.has(message.id)) continue;
+    seenIds.add(message.id);
+
+    const email = graphEmail(message);
+    const trackingToken = extractTrackingToken(email);
+    if (!trackingToken) {
+      skipped += 1;
+      continue;
+    }
+
+    const outbound = await findOutboundByToken(trackingToken);
+    if (!outbound) {
+      skipped += 1;
+      continue;
+    }
+
+    await recordInboundEmail({
+      provider: 'microsoft-graph',
+      providerMessageId: message.id,
+      email,
+      trackingToken,
+      outbound,
+    });
+    processed += 1;
+  }
+
+  await writeState({
+    ...state,
+    graphSeenMessageIds: cappedSeenIds(seenIds),
+    graphCheckedAt: new Date().toISOString(),
+  });
+  return { processed, skipped, provider: 'microsoft-graph' };
+}
+
 export async function pollProspectingInbox() {
   const config = emailConfig();
   if (!config.enabled || !config.pollEnabled) return { processed: 0, skipped: 0, disabled: true };
+  if (graphConfigured(config)) return pollGraphInbox(config);
   if (!config.imap.host || !config.imap.user || !config.imap.pass) {
     throw new Error('Faltan credenciales IMAP para leer respuestas.');
   }
