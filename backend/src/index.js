@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth.js';
 import { biAuthRouter } from './routes/bi-auth.js';
 import { biRouter } from './routes/bi.js';
 import { requireAuth, requireBiAuth } from './services/auth.js';
+import { startProspectingEmailWorker } from './services/prospecting-email.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -58,4 +59,5 @@ app.use((err, _req, res, _next) => {
 
 app.listen(port, () => {
   console.log(`cliente CRM backend disponible en http://localhost:${port}`);
+  startProspectingEmailWorker();
 });

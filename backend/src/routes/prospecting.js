@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { supabase } from '../services/supabase.js';
+import { emailStatus, pollProspectingInbox, sendProspectingEmail } from '../services/prospecting-email.js';
 
 export const prospectingRouter = Router();
 
@@ -505,6 +506,22 @@ prospectingRouter.get('/lists', async (_req, res) => {
 
 prospectingRouter.get('/prospeo/usage', async (_req, res) => {
   return res.json({ data: await prospeoUsageSummary() });
+});
+
+prospectingRouter.get('/email/status', async (_req, res) => {
+  return res.json({ data: emailStatus() });
+});
+
+prospectingRouter.post('/email/poll-now', async (_req, res) => {
+  try {
+    const data = await pollProspectingInbox();
+    return res.json({ data });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'No se pudo revisar la bandeja de respuestas.',
+      detail: error instanceof Error ? error.message : 'Error desconocido.',
+    });
+  }
 });
 
 prospectingRouter.post('/lists', async (req, res) => {
@@ -1063,6 +1080,111 @@ prospectingRouter.patch('/messages/:id', async (req, res) => {
   });
 
   return res.json({ data });
+});
+
+prospectingRouter.post('/messages/:id/send-email', async (req, res) => {
+  const { subject, body, to } = req.body ?? {};
+  const cleanSubject = normalizeText(subject);
+  const cleanBody = normalizeText(body);
+  const cleanTo = normalizeText(to).toLowerCase();
+
+  const { data: message, error: messageError } = await supabase
+    .from('prospect_messages')
+    .select('id, prospect_id, channel, step, subject, body, status')
+    .eq('id', req.params.id)
+    .single();
+
+  if (messageError) {
+    return res.status(404).json({ error: 'No se encontro el mensaje.' });
+  }
+  if (message.channel !== 'EMAIL') {
+    return res.status(400).json({ error: 'Solo los mensajes de canal EMAIL se pueden enviar por correo.' });
+  }
+
+  const { data: prospect, error: prospectError } = await supabase
+    .from('prospects')
+    .select('id, list_id, company_name, contact_name, email, status')
+    .eq('id', message.prospect_id)
+    .single();
+
+  if (prospectError) {
+    return res.status(404).json({ error: 'No se encontro el prospecto del mensaje.' });
+  }
+
+  try {
+    const sent = await sendProspectingEmail({
+      prospect,
+      message,
+      subject: cleanSubject || message.subject,
+      body: cleanBody || message.body,
+      to: cleanTo || prospect.email,
+    });
+
+    const { data: updatedMessage, error: updateMessageError } = await supabase
+      .from('prospect_messages')
+      .update({
+        subject: sent.subject,
+        body: sent.body,
+        status: 'ENVIADO',
+      })
+      .eq('id', message.id)
+      .select('id, prospect_id, channel, step, subject, body, status, updated_at')
+      .single();
+
+    if (updateMessageError) {
+      return res.status(500).json({ error: 'El email se envio, pero no se pudo actualizar el mensaje.', detail: updateMessageError.message });
+    }
+
+    const nextStatus = prospectStatusForOutcome('CONTACTADO', prospect.status);
+    const { data: updatedProspect, error: updateProspectError } = await supabase
+      .from('prospects')
+      .update({
+        status: nextStatus,
+        email: sent.to,
+      })
+      .eq('id', prospect.id)
+      .select()
+      .single();
+
+    if (updateProspectError) {
+      return res.status(500).json({ error: 'El email se envio, pero no se pudo actualizar el prospecto.', detail: updateProspectError.message });
+    }
+
+    const { data: activity, error: activityError } = await supabase
+      .from('prospect_activities')
+      .insert({
+        prospect_id: prospect.id,
+        type: 'MENSAJE',
+        description: `Email enviado a ${sent.to}.`,
+        metadata: {
+          emailDirection: 'outbound',
+          channel: 'EMAIL',
+          contactEmail: sent.to,
+          contactName: prospect.contact_name || null,
+          subject: sent.subject,
+          body: sent.body,
+          outreachStatus: 'CONTACTADO',
+          messageId: message.id,
+          smtpMessageId: sent.messageId,
+          trackingToken: sent.trackingToken,
+          from: sent.from,
+        },
+      })
+      .select()
+      .single();
+
+    if (activityError) {
+      return res.status(500).json({ error: 'El email se envio, pero no se pudo guardar el historial.', detail: activityError.message });
+    }
+
+    await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: updatedProspect.list_id });
+    return res.json({ data: { prospect: updatedProspect, message: updatedMessage, activity } });
+  } catch (error) {
+    return res.status(502).json({
+      error: 'No se pudo enviar el email.',
+      detail: error instanceof Error ? error.message : 'Error desconocido.',
+    });
+  }
 });
 
 prospectingRouter.post('/prospects/:id/outreach', async (req, res) => {

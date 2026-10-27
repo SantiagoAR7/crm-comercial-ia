@@ -103,6 +103,15 @@ type ProspeoUsage = {
   enrichRemaining: number;
 };
 
+type EmailStatus = {
+  enabled: boolean;
+  pollEnabled: boolean;
+  fromAddress: string;
+  smtpConfigured: boolean;
+  imapConfigured: boolean;
+  pollIntervalSeconds: number;
+};
+
 type ProspeoForm = {
   jobTitles: string;
   locations: string;
@@ -190,6 +199,9 @@ export default function AiProspectingPage() {
   const [searchingProspeo, setSearchingProspeo] = useState(false);
   const [savingOutreach, setSavingOutreach] = useState(false);
   const [savingResponse, setSavingResponse] = useState(false);
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+  const [pollingEmail, setPollingEmail] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
   const [csvText, setCsvText] = useState('');
@@ -260,6 +272,16 @@ export default function AiProspectingPage() {
     }
   }, []);
 
+  const loadEmailStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/email/status`, { cache: 'no-store' });
+      const body = await response.json();
+      if (response.ok) setEmailStatus(body.data || null);
+    } catch {
+      setEmailStatus(null);
+    }
+  }, []);
+
   const loadProspects = useCallback(async (listId: string) => {
     if (!listId) {
       setProspects([]);
@@ -283,7 +305,8 @@ export default function AiProspectingPage() {
   useEffect(() => {
     loadLists();
     loadProspeoUsage();
-  }, [loadLists, loadProspeoUsage]);
+    loadEmailStatus();
+  }, [loadLists, loadProspeoUsage, loadEmailStatus]);
 
   useEffect(() => {
     loadProspects(selectedListId);
@@ -541,6 +564,57 @@ export default function AiProspectingPage() {
     }
   }
 
+  async function sendEmailMessage(item: ProspectMessage) {
+    if (!visibleProspect?.email && !outreachForm.contactEmail) {
+      setMessage('Agrega un email de contacto antes de enviar.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Enviar email desde ${emailStatus?.fromAddress || 'la cuenta configurada'} a ${outreachForm.contactEmail || visibleProspect.email}?`);
+    if (!confirmed) return;
+
+    const draft = messageDrafts[item.id] || { subject: item.subject || '', body: item.body || '' };
+    setSendingEmailId(item.id);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/messages/${item.id}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: draft.subject,
+          body: draft.body,
+          to: outreachForm.contactEmail || visibleProspect.email,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo enviar el email.');
+      setMessage('Email enviado y seguimiento guardado.');
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadEmailStatus()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setSendingEmailId(null);
+    }
+  }
+
+  async function pollEmailReplies() {
+    setPollingEmail(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/email/poll-now`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo revisar el correo.');
+      const processed = body.data?.processed || 0;
+      const skipped = body.data?.skipped || 0;
+      setMessage(`${processed} respuestas registradas. ${skipped} correos ignorados por no pertenecer a Prospección IA.`);
+      await loadProspects(selectedListId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setPollingEmail(false);
+    }
+  }
+
   async function saveOutreach(event: FormEvent) {
     event.preventDefault();
     if (!visibleProspect) return;
@@ -792,6 +866,45 @@ export default function AiProspectingPage() {
             </form>
           </section>
 
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Mail size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Email de prospección</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {emailStatus?.fromAddress || 'transformaciondigital@davofrio.com'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={loadEmailStatus} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                  Ver estado
+                </button>
+                <button
+                  type="button"
+                  onClick={pollEmailReplies}
+                  disabled={pollingEmail || !emailStatus?.enabled || !emailStatus?.imapConfigured}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pollingEmail ? <Loader2 className="animate-spin" size={16} /> : <Reply size={16} />}
+                  Revisar respuestas
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 text-xs font-semibold sm:grid-cols-3">
+              <span className={`rounded-lg px-3 py-2 ${emailStatus?.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                Envío {emailStatus?.enabled ? 'activo' : 'pendiente'}
+              </span>
+              <span className={`rounded-lg px-3 py-2 ${emailStatus?.smtpConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                SMTP {emailStatus?.smtpConfigured ? 'configurado' : 'sin clave'}
+              </span>
+              <span className={`rounded-lg px-3 py-2 ${emailStatus?.imapConfigured && emailStatus?.pollEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                Respuestas {emailStatus?.imapConfigured && emailStatus?.pollEnabled ? `cada ${emailStatus.pollIntervalSeconds}s` : 'pendientes'}
+              </span>
+            </div>
+          </section>
+
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -958,6 +1071,16 @@ export default function AiProspectingPage() {
                             {savingMessageId === item.id ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                             Guardar
                           </button>
+                          {item.channel === 'EMAIL' && (
+                            <button
+                              onClick={() => sendEmailMessage(item)}
+                              disabled={sendingEmailId === item.id || !emailStatus?.enabled || !emailStatus?.smtpConfigured}
+                              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {sendingEmailId === item.id ? <Loader2 className="animate-spin" size={16} /> : <Mail size={16} />}
+                              Enviar email
+                            </button>
+                          )}
                           <button
                             onClick={() => saveProspectMessage(item.id, 'APROBADO')}
                             disabled={savingMessageId === item.id}
