@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { supabase } from '../services/supabase.js';
 
 export const prospectingRouter = Router();
@@ -7,9 +9,29 @@ const allowedProspectStatuses = new Set(['NUEVO', 'INVESTIGADO', 'MENSAJE_GENERA
 const allowedMessageStatuses = new Set(['BORRADOR', 'APROBADO', 'DESCARTADO', 'ENVIADO', 'RESPONDIDO']);
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const openaiProspectingModel = process.env.OPENAI_PROSPECTING_MODEL || 'gpt-4.1-mini';
+const prospeoApiKey = process.env.PROSPEO_API_KEY;
+const prospeoDailySearchLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_SEARCH_LIMIT || 50));
+const prospeoDailyEnrichLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_ENRICH_LIMIT || 0));
+const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+const prospeoUsagePath = path.join(dataDir, 'prospeo-usage.json');
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function splitTerms(value, limit = 20) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeText(item)).filter(Boolean).slice(0, limit);
+  }
+  return normalizeText(value)
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function normalizeWebsite(value) {
@@ -45,6 +67,185 @@ function prospectIdentityKeys(row) {
   if (company) keys.push(`company:${company}`);
 
   return keys;
+}
+
+async function readProspeoUsage() {
+  const day = todayKey();
+  try {
+    const raw = await fs.readFile(prospeoUsagePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed?.date === day) {
+      return {
+        date: day,
+        search: Number(parsed.search || 0),
+        enrich: Number(parsed.enrich || 0),
+      };
+    }
+  } catch {
+    // Missing or invalid usage file starts a fresh day.
+  }
+
+  return { date: day, search: 0, enrich: 0 };
+}
+
+async function writeProspeoUsage(usage) {
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.writeFile(prospeoUsagePath, JSON.stringify(usage, null, 2));
+}
+
+async function prospeoUsageSummary() {
+  const usage = await readProspeoUsage();
+  return {
+    configured: Boolean(prospeoApiKey),
+    date: usage.date,
+    searchUsed: usage.search,
+    searchLimit: prospeoDailySearchLimit,
+    searchRemaining: Math.max(0, prospeoDailySearchLimit - usage.search),
+    enrichUsed: usage.enrich,
+    enrichLimit: prospeoDailyEnrichLimit,
+    enrichRemaining: Math.max(0, prospeoDailyEnrichLimit - usage.enrich),
+  };
+}
+
+async function reserveProspeoUsage(kind, count = 1) {
+  const usage = await readProspeoUsage();
+  const field = kind === 'enrich' ? 'enrich' : 'search';
+  const limit = field === 'enrich' ? prospeoDailyEnrichLimit : prospeoDailySearchLimit;
+  const nextValue = Number(usage[field] || 0) + count;
+
+  if (nextValue > limit) {
+    const label = field === 'enrich' ? 'enriquecimientos' : 'busquedas';
+    throw new Error(`Limite diario de Prospeo alcanzado para ${label}: ${usage[field]}/${limit}.`);
+  }
+
+  const nextUsage = { ...usage, [field]: nextValue };
+  await writeProspeoUsage(nextUsage);
+  return nextUsage;
+}
+
+function buildProspeoSearchPayload(input = {}) {
+  const filters = input.filters && typeof input.filters === 'object' ? input.filters : {};
+  const jobTitles = splitTerms(input.jobTitles || input.job_titles || input.targetRole || input.target_role, 20);
+  const locations = splitTerms(input.locations || input.location || input.country, 20);
+  const industries = splitTerms(input.industries || input.industry || input.sector, 20);
+  const companyNames = splitTerms(input.companyKeywords || input.company_keywords, 20);
+
+  if (jobTitles.length && !filters.person_job_title) {
+    filters.person_job_title = {
+      include: jobTitles,
+      match_mode: 'CONTAINS',
+    };
+  }
+
+  if (locations.length && !filters.person_location_search) {
+    filters.person_location_search = { include: locations };
+  }
+
+  if (industries.length && !filters.company_industry) {
+    filters.company_industry = { include: industries };
+  }
+
+  if (companyNames.length && !filters.company) {
+    filters.company = { names: { include: companyNames } };
+  }
+
+  if (!filters.person_contact_details && input.onlyVerifiedEmail !== false) {
+    filters.person_contact_details = {
+      email: ['VERIFIED'],
+      operator: 'OR',
+      hide_people_with_details_already_revealed: false,
+    };
+  }
+
+  if (!filters.max_person_per_company) {
+    filters.max_person_per_company = Math.min(5, Math.max(1, Number(input.maxPerCompany || input.max_per_company || 2)));
+  }
+
+  return {
+    filters,
+    page: Math.max(1, Number(input.page || 1)),
+  };
+}
+
+async function callProspeo(endpoint, payload) {
+  if (!prospeoApiKey) {
+    throw new Error('PROSPEO_API_KEY no esta configurada.');
+  }
+
+  const response = await fetch(`https://api.prospeo.io/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-KEY': prospeoApiKey,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || body.error || `Prospeo respondio HTTP ${response.status}`);
+  }
+
+  return body;
+}
+
+function extractProspeoItems(body) {
+  const candidates = [
+    body?.data,
+    body?.data?.people,
+    body?.data?.persons,
+    body?.people,
+    body?.persons,
+    body?.results,
+    body?.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function normalizeProspeoProspect(item, list) {
+  const person = item?.person || item;
+  const company = item?.company || person?.company || {};
+  const companyName = normalizeText(company.name || company.company_name || person.company_name || person.current_company);
+  if (!companyName) return null;
+
+  const location = person.location || company.location || {};
+  const city = normalizeText(location.city || company.city || person.city) || null;
+  const country = normalizeText(location.country || company.country || person.country) || null;
+  const fullName = normalizeText(person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' '));
+  const emailValue = person.email?.email || person.email?.value || person.email || null;
+  const mobileValue = person.mobile?.mobile || person.mobile?.value || person.mobile || null;
+  const companyWebsite = company.website || company.domain || person.company_website;
+  const companySize = company.headcount_range || company.employee_count_range || company.size || null;
+  const sector = company.industry || company.main_industry || list?.icp?.sector || null;
+  const prospeoPersonId = person.person_id || person.id || item.person_id;
+  const prospeoCompanyId = company.company_id || company.id || item.company_id;
+
+  return {
+    list_id: list.id,
+    company_name: companyName,
+    website: normalizeWebsite(companyWebsite),
+    linkedin_url: normalizeText(person.linkedin_url || company.linkedin_url) || null,
+    contact_name: fullName || null,
+    contact_role: normalizeText(person.job_title || person.title || person.headline) || null,
+    email: normalizeText(typeof emailValue === 'string' ? emailValue : '').toLowerCase() || null,
+    phone: normalizeText(typeof mobileValue === 'string' ? mobileValue : '') || null,
+    country,
+    city,
+    sector: normalizeText(sector) || null,
+    company_size: normalizeText(companySize) || null,
+    source: 'PROSPEO',
+    tags: ['prospeo'],
+    notes: [
+      prospeoPersonId ? `prospeo_person_id:${prospeoPersonId}` : '',
+      prospeoCompanyId ? `prospeo_company_id:${prospeoCompanyId}` : '',
+    ].filter(Boolean).join('\n') || null,
+  };
 }
 
 function scoreProspect(prospect) {
@@ -281,6 +482,10 @@ prospectingRouter.get('/lists', async (_req, res) => {
   return res.json({ data: data || [] });
 });
 
+prospectingRouter.get('/prospeo/usage', async (_req, res) => {
+  return res.json({ data: await prospeoUsageSummary() });
+});
+
 prospectingRouter.post('/lists', async (req, res) => {
   const { name, description = '', icp = {}, source = 'MANUAL' } = req.body ?? {};
   const cleanName = normalizeText(name);
@@ -305,6 +510,138 @@ prospectingRouter.post('/lists', async (req, res) => {
   }
 
   return res.status(201).json({ data });
+});
+
+prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
+  const { data: list, error: listError } = await loadList(req.params.id);
+  if (listError) return res.status(404).json({ error: 'No se encontro la lista.' });
+
+  const confirmSpend = req.body?.confirmSpend === true;
+  if (!confirmSpend) {
+    return res.status(400).json({
+      error: 'Confirma el uso de Prospeo antes de ejecutar la busqueda.',
+      detail: 'Cada busqueda con resultados puede consumir 1 credito y cuenta para el limite diario.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  const maxResults = Math.min(25, Math.max(1, Number(req.body?.maxResults || 10)));
+  const enrichEmails = req.body?.enrichEmails === true;
+  if (enrichEmails && prospeoDailyEnrichLimit <= 0) {
+    return res.status(400).json({
+      error: 'El enriquecimiento de emails esta desactivado.',
+      detail: 'Configura PROSPEO_DAILY_ENRICH_LIMIT para permitirlo. Por ahora solo se importan perfiles sin revelar emails.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  const payload = buildProspeoSearchPayload({
+    ...req.body,
+    sector: req.body?.sector || list.icp?.sector,
+    country: req.body?.country || list.icp?.country,
+    targetRole: req.body?.targetRole || list.icp?.targetRole,
+  });
+
+  if (!Object.keys(payload.filters || {}).length) {
+    return res.status(400).json({ error: 'Define al menos un filtro para buscar en Prospeo.' });
+  }
+
+  try {
+    await reserveProspeoUsage('search', 1);
+  } catch (error) {
+    return res.status(429).json({
+      error: error instanceof Error ? error.message : 'Limite diario de Prospeo alcanzado.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  let prospeoBody;
+  try {
+    prospeoBody = await callProspeo('search-person', payload);
+  } catch (error) {
+    return res.status(502).json({
+      error: 'No se pudo consultar Prospeo.',
+      detail: error instanceof Error ? error.message : 'Error desconocido.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  const items = extractProspeoItems(prospeoBody).slice(0, maxResults);
+  const normalizedRows = items
+    .map((item) => normalizeProspeoProspect(item, list))
+    .filter(Boolean);
+
+  if (!normalizedRows.length) {
+    return res.json({
+      data: [],
+      inserted: 0,
+      skipped: 0,
+      found: items.length,
+      usage: await prospeoUsageSummary(),
+      free: prospeoBody?.free === true,
+      filters: payload.filters,
+    });
+  }
+
+  const { data: existingProspects, error: existingError } = await supabase
+    .from('prospects')
+    .select('company_name, website, email')
+    .eq('list_id', list.id);
+
+  if (existingError) {
+    return res.status(500).json({ error: 'No se pudieron validar duplicados.', detail: existingError.message });
+  }
+
+  const existingKeys = new Set((existingProspects || []).flatMap(prospectIdentityKeys));
+  const incomingKeys = new Set();
+  const skippedRows = [];
+  const insertRows = [];
+
+  for (const row of normalizedRows) {
+    const keys = prospectIdentityKeys(row);
+    const duplicated = keys.some((key) => incomingKeys.has(key) || existingKeys.has(key));
+    if (duplicated) {
+      skippedRows.push({ companyName: row.company_name, reason: 'Duplicado por empresa, web o email' });
+      continue;
+    }
+    keys.forEach((key) => incomingKeys.add(key));
+    insertRows.push(row);
+  }
+
+  if (!insertRows.length) {
+    return res.json({
+      data: [],
+      inserted: 0,
+      skipped: skippedRows.length,
+      skippedRows,
+      found: items.length,
+      usage: await prospeoUsageSummary(),
+      free: prospeoBody?.free === true,
+      filters: payload.filters,
+    });
+  }
+
+  const { data, error } = await supabase
+    .from('prospects')
+    .insert(insertRows)
+    .select();
+
+  if (error) {
+    return res.status(500).json({ error: 'No se pudieron guardar los prospectos de Prospeo.', detail: error.message });
+  }
+
+  await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: list.id });
+
+  return res.status(201).json({
+    data,
+    inserted: data?.length || insertRows.length,
+    skipped: skippedRows.length,
+    skippedRows,
+    found: items.length,
+    usage: await prospeoUsageSummary(),
+    free: prospeoBody?.free === true,
+    filters: payload.filters,
+  });
 });
 
 prospectingRouter.patch('/lists/:id', async (req, res) => {

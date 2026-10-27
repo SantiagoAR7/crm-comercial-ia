@@ -14,5 +14,8 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "mssql": "^12.7.4"
+  },
+  "overrides": {
+    "@azure/msal-node": "^7.1.1"
   }
 }

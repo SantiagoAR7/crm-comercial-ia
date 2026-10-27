@@ -80,6 +80,26 @@ type ListForm = {
   offer: string;
 };
 
+type ProspeoUsage = {
+  configured: boolean;
+  date: string;
+  searchUsed: number;
+  searchLimit: number;
+  searchRemaining: number;
+  enrichUsed: number;
+  enrichLimit: number;
+  enrichRemaining: number;
+};
+
+type ProspeoForm = {
+  jobTitles: string;
+  locations: string;
+  industries: string;
+  companyKeywords: string;
+  maxResults: number;
+  confirmSpend: boolean;
+};
+
 const emptyListForm: ListForm = {
   name: '',
   description: '',
@@ -88,6 +108,15 @@ const emptyListForm: ListForm = {
   targetRole: '',
   pain: '',
   offer: '',
+};
+
+const emptyProspeoForm: ProspeoForm = {
+  jobTitles: 'gerente, director, responsable mantenimiento, operaciones',
+  locations: 'Alicante, Spain',
+  industries: '',
+  companyKeywords: '',
+  maxResults: 10,
+  confirmSpend: false,
 };
 
 const sampleImport = `Empresa,Web,Contacto,Cargo,Email,Sector,Ciudad,Pais,Tamano
@@ -108,6 +137,9 @@ export default function AiProspectingPage() {
   const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const [archivingListId, setArchivingListId] = useState<string | null>(null);
   const [prospectFilter, setProspectFilter] = useState('TODOS');
+  const [prospeoUsage, setProspeoUsage] = useState<ProspeoUsage | null>(null);
+  const [prospeoForm, setProspeoForm] = useState<ProspeoForm>(emptyProspeoForm);
+  const [searchingProspeo, setSearchingProspeo] = useState(false);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
   const [csvText, setCsvText] = useState('');
@@ -155,6 +187,16 @@ export default function AiProspectingPage() {
     }
   }, []);
 
+  const loadProspeoUsage = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/prospeo/usage`, { cache: 'no-store' });
+      const body = await response.json();
+      if (response.ok) setProspeoUsage(body.data || null);
+    } catch {
+      setProspeoUsage(null);
+    }
+  }, []);
+
   const loadProspects = useCallback(async (listId: string) => {
     if (!listId) {
       setProspects([]);
@@ -177,7 +219,8 @@ export default function AiProspectingPage() {
 
   useEffect(() => {
     loadLists();
-  }, [loadLists]);
+    loadProspeoUsage();
+  }, [loadLists, loadProspeoUsage]);
 
   useEffect(() => {
     loadProspects(selectedListId);
@@ -286,6 +329,46 @@ export default function AiProspectingPage() {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setBulkGenerating(false);
+    }
+  }
+
+  async function searchProspeo(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedListId) {
+      setMessage('Selecciona o crea una lista antes de buscar en Prospeo.');
+      return;
+    }
+    if (!prospeoForm.confirmSpend) {
+      setMessage('Marca la casilla de autorización para usar 1 búsqueda de Prospeo.');
+      return;
+    }
+
+    setSearchingProspeo(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/lists/${selectedListId}/prospeo/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobTitles: prospeoForm.jobTitles,
+          locations: prospeoForm.locations,
+          industries: prospeoForm.industries,
+          companyKeywords: prospeoForm.companyKeywords,
+          maxResults: prospeoForm.maxResults,
+          confirmSpend: prospeoForm.confirmSpend,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo buscar en Prospeo.');
+      setProspeoForm((current) => ({ ...current, confirmSpend: false }));
+      setProspeoUsage(body.usage || null);
+      setMessage(`${body.inserted || 0} prospectos importados desde Prospeo. ${body.skipped || 0} duplicados omitidos. Búsquedas restantes hoy: ${body.usage?.searchRemaining ?? '—'}.`);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadProspeoUsage()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+      await loadProspeoUsage();
+    } finally {
+      setSearchingProspeo(false);
     }
   }
 
@@ -501,6 +584,89 @@ export default function AiProspectingPage() {
                 {importing ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
                 {importing ? 'Importando...' : 'Importar a la lista'}
               </button>
+            </form>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Search size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Buscar con Prospeo</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {prospeoUsage?.configured ? `Hoy: ${prospeoUsage.searchUsed}/${prospeoUsage.searchLimit} búsquedas usadas.` : 'Prospeo todavía no está configurado en este entorno.'}
+                </p>
+              </div>
+              <button type="button" onClick={loadProspeoUsage} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                Ver límite
+              </button>
+            </div>
+
+            <form onSubmit={searchProspeo} className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Field label="Cargos objetivo">
+                <input
+                  value={prospeoForm.jobTitles}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, jobTitles: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                  placeholder="gerente, mantenimiento, operaciones"
+                />
+              </Field>
+              <Field label="Ubicación">
+                <input
+                  value={prospeoForm.locations}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, locations: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                  placeholder="Alicante, Spain"
+                />
+              </Field>
+              <Field label="Industrias">
+                <input
+                  value={prospeoForm.industries}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, industries: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                  placeholder="Construction, Facilities Services..."
+                />
+              </Field>
+              <Field label="Empresas / palabras clave">
+                <input
+                  value={prospeoForm.companyKeywords}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, companyKeywords: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                  placeholder="hotel, clínica, industria..."
+                />
+              </Field>
+              <Field label="Máximo a importar">
+                <input
+                  type="number"
+                  min={1}
+                  max={25}
+                  value={prospeoForm.maxResults}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, maxResults: Number(event.target.value) })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                />
+              </Field>
+              <label className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={prospeoForm.confirmSpend}
+                  onChange={(event) => setProspeoForm({ ...prospeoForm, confirmSpend: event.target.checked })}
+                  className="h-4 w-4"
+                />
+                Autorizar 1 búsqueda de Prospeo
+              </label>
+              <div className="lg:col-span-2">
+                <button
+                  disabled={!selectedListId || searchingProspeo || !prospeoUsage?.configured || !prospeoForm.confirmSpend || (prospeoUsage?.searchRemaining ?? 0) <= 0}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {searchingProspeo ? <Loader2 className="animate-spin" size={17} /> : <Search size={17} />}
+                  {searchingProspeo ? 'Buscando...' : 'Buscar e importar'}
+                </button>
+                <p className="mt-2 text-xs text-slate-500">
+                  Por ahora no revela emails ni móviles. Solo importa perfiles para revisión y evita duplicados por empresa, web o email.
+                </p>
+              </div>
             </form>
           </section>
 
