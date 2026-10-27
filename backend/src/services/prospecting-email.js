@@ -342,7 +342,7 @@ export async function sendProspectingEmail({ prospect, message, subject, body, t
   const config = emailConfig();
   if (!config.enabled) throw new Error('El envio de emails de prospeccion esta desactivado.');
 
-  const trackingToken = `DVF-${message.id.slice(0, 8)}`;
+  const trackingToken = `DVF-${message.id.slice(0, 8).toUpperCase()}`;
   const cleanSubject = escapeHeader(subject || message.subject || `${prospect.company_name} | DAVOFRIO`);
   const trackedSubject = cleanSubject.includes(`[${trackingToken}]`) ? cleanSubject : `${cleanSubject} [${trackingToken}]`;
 
@@ -501,15 +501,25 @@ function extractTrackingToken(email) {
 }
 
 async function findOutboundByToken(trackingToken) {
-  const { data, error } = await supabase
-    .from('prospect_activities')
-    .select('id, prospect_id, metadata, created_at')
-    .eq('type', 'MENSAJE')
-    .contains('metadata', { trackingToken })
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  return data?.[0] || null;
+  const tokenVariants = Array.from(new Set([
+    clean(trackingToken),
+    clean(trackingToken).toUpperCase(),
+    clean(trackingToken).replace(/^DVF-/i, 'DVF-').toLowerCase().replace(/^dvf-/, 'DVF-'),
+  ].filter(Boolean)));
+
+  for (const token of tokenVariants) {
+    const { data, error } = await supabase
+      .from('prospect_activities')
+      .select('id, prospect_id, metadata, created_at')
+      .eq('type', 'MENSAJE')
+      .contains('metadata', { trackingToken: token })
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  }
+
+  return null;
 }
 
 async function recordInboundEmail({ uid, providerMessageId, email, trackingToken, outbound, provider = 'imap' }) {
