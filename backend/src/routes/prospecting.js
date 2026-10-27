@@ -7,6 +7,8 @@ export const prospectingRouter = Router();
 
 const allowedProspectStatuses = new Set(['NUEVO', 'INVESTIGADO', 'MENSAJE_GENERADO', 'APROBADO', 'DESCARTADO', 'CONVERTIDO']);
 const allowedMessageStatuses = new Set(['BORRADOR', 'APROBADO', 'DESCARTADO', 'ENVIADO', 'RESPONDIDO']);
+const allowedContactChannels = new Set(['EMAIL', 'LINKEDIN', 'WHATSAPP', 'LLAMADA']);
+const allowedOutreachStatuses = new Set(['CONTACTADO', 'INTERESADO', 'NO_INTERESADO', 'MAS_TARDE', 'OBJECION', 'PIDIO_INFO', 'REUNION', 'NO_CONTACTAR']);
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const openaiProspectingModel = process.env.OPENAI_PROSPECTING_MODEL || 'gpt-4.1-mini';
 const prospeoApiKey = process.env.PROSPEO_API_KEY;
@@ -451,12 +453,31 @@ function normalizeProspectRow(row) {
   const messages = Array.isArray(row.prospect_messages)
     ? [...row.prospect_messages].sort((a, b) => a.step - b.step || String(a.channel).localeCompare(String(b.channel)))
     : [];
+  const activities = Array.isArray(row.prospect_activities)
+    ? [...row.prospect_activities].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : [];
 
   return {
     ...row,
     prospect_research: research,
     prospect_messages: messages,
+    prospect_activities: activities,
   };
+}
+
+function normalizeDateTime(value) {
+  const cleanValue = normalizeText(value);
+  if (!cleanValue) return null;
+  const date = new Date(cleanValue);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function prospectStatusForOutcome(status, currentStatus) {
+  if (status === 'NO_INTERESADO' || status === 'NO_CONTACTAR') return 'DESCARTADO';
+  if (status === 'INTERESADO' || status === 'PIDIO_INFO' || status === 'REUNION') return 'APROBADO';
+  if (currentStatus === 'NUEVO' || currentStatus === 'INVESTIGADO' || currentStatus === 'MENSAJE_GENERADO') return 'APROBADO';
+  return currentStatus;
 }
 
 async function loadList(listId) {
@@ -724,7 +745,8 @@ prospectingRouter.get('/lists/:id/prospects', async (req, res) => {
       created_at,
       updated_at,
       prospect_research(company_summary, pain_hypothesis, buying_signal, personalization_angle, recommended_offer, confidence, generated_at),
-      prospect_messages(id, channel, step, subject, body, status, created_at)
+      prospect_messages(id, channel, step, subject, body, status, created_at),
+      prospect_activities(id, type, description, metadata, created_at)
     `)
     .eq('list_id', req.params.id)
     .order('created_at', { ascending: false })
@@ -1041,6 +1063,194 @@ prospectingRouter.patch('/messages/:id', async (req, res) => {
   });
 
   return res.json({ data });
+});
+
+prospectingRouter.post('/prospects/:id/outreach', async (req, res) => {
+  const {
+    channel = 'EMAIL',
+    contactEmail = '',
+    contactName = '',
+    subject = '',
+    body = '',
+    outreachStatus = 'CONTACTADO',
+    nextFollowUpAt = '',
+    notes = '',
+  } = req.body ?? {};
+
+  const cleanChannel = normalizeText(channel).toUpperCase();
+  const cleanStatus = normalizeText(outreachStatus).toUpperCase();
+  const cleanBody = normalizeText(body);
+  const cleanSubject = normalizeText(subject);
+  const cleanContactEmail = normalizeText(contactEmail).toLowerCase();
+  const cleanContactName = normalizeText(contactName);
+  const cleanNotes = normalizeText(notes);
+  const normalizedNextFollowUpAt = normalizeDateTime(nextFollowUpAt);
+
+  if (!allowedContactChannels.has(cleanChannel)) {
+    return res.status(400).json({ error: 'El canal de contacto no es valido.' });
+  }
+  if (!allowedOutreachStatuses.has(cleanStatus)) {
+    return res.status(400).json({ error: 'El estado de seguimiento no es valido.' });
+  }
+  if (!cleanContactEmail && cleanChannel === 'EMAIL') {
+    return res.status(400).json({ error: 'El email de contacto es obligatorio para canal EMAIL.' });
+  }
+  if (!cleanBody && !cleanNotes) {
+    return res.status(400).json({ error: 'Incluye el mensaje enviado o una nota de seguimiento.' });
+  }
+
+  const { data: prospect, error: prospectError } = await supabase
+    .from('prospects')
+    .select('id, list_id, status, contact_name, email')
+    .eq('id', req.params.id)
+    .single();
+
+  if (prospectError) {
+    return res.status(404).json({ error: 'No se encontro el prospecto.' });
+  }
+
+  let savedMessage = null;
+  if (cleanBody) {
+    const { data: message, error: messageError } = await supabase
+      .from('prospect_messages')
+      .insert({
+        prospect_id: prospect.id,
+        channel: cleanChannel,
+        step: 1,
+        subject: cleanSubject || null,
+        body: cleanBody,
+        status: 'ENVIADO',
+        generated_by: 'MANUAL_TRACKING',
+      })
+      .select('id, prospect_id, channel, step, subject, body, status, created_at')
+      .single();
+
+    if (messageError) {
+      return res.status(500).json({ error: 'No se pudo guardar el mensaje enviado.', detail: messageError.message });
+    }
+    savedMessage = message;
+  }
+
+  const nextStatus = prospectStatusForOutcome(cleanStatus, prospect.status);
+  const updates = {};
+  if (nextStatus !== prospect.status) updates.status = nextStatus;
+  if (cleanContactEmail && cleanContactEmail !== prospect.email) updates.email = cleanContactEmail;
+  if (cleanContactName && cleanContactName !== prospect.contact_name) updates.contact_name = cleanContactName;
+
+  let updatedProspect = prospect;
+  if (Object.keys(updates).length) {
+    const { data, error } = await supabase
+      .from('prospects')
+      .update(updates)
+      .eq('id', prospect.id)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: 'Se guardo el mensaje, pero no se pudo actualizar el prospecto.', detail: error.message });
+    }
+    updatedProspect = data;
+  }
+
+  const { data: activity, error: activityError } = await supabase
+    .from('prospect_activities')
+    .insert({
+      prospect_id: prospect.id,
+      type: 'MENSAJE',
+      description: `Contacto registrado por ${cleanChannel}: ${cleanStatus}.`,
+      metadata: {
+        channel: cleanChannel,
+        contactEmail: cleanContactEmail || null,
+        contactName: cleanContactName || null,
+        subject: cleanSubject || null,
+        body: cleanBody || null,
+        outreachStatus: cleanStatus,
+        nextFollowUpAt: normalizedNextFollowUpAt,
+        notes: cleanNotes || null,
+        messageId: savedMessage?.id || null,
+      },
+    })
+    .select()
+    .single();
+
+  if (activityError) {
+    return res.status(500).json({ error: 'No se pudo guardar la actividad de seguimiento.', detail: activityError.message });
+  }
+
+  await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: updatedProspect.list_id });
+  return res.status(201).json({ data: { prospect: updatedProspect, message: savedMessage, activity } });
+});
+
+prospectingRouter.post('/prospects/:id/response', async (req, res) => {
+  const {
+    responseText = '',
+    classification = 'INTERESADO',
+    nextFollowUpAt = '',
+    notes = '',
+  } = req.body ?? {};
+
+  const cleanResponseText = normalizeText(responseText);
+  const cleanClassification = normalizeText(classification).toUpperCase();
+  const cleanNotes = normalizeText(notes);
+  const normalizedNextFollowUpAt = normalizeDateTime(nextFollowUpAt);
+
+  if (!allowedOutreachStatuses.has(cleanClassification)) {
+    return res.status(400).json({ error: 'La clasificacion de respuesta no es valida.' });
+  }
+  if (!cleanResponseText && !cleanNotes) {
+    return res.status(400).json({ error: 'Incluye la respuesta del prospecto o una nota.' });
+  }
+
+  const { data: prospect, error: prospectError } = await supabase
+    .from('prospects')
+    .select('id, list_id, status')
+    .eq('id', req.params.id)
+    .single();
+
+  if (prospectError) {
+    return res.status(404).json({ error: 'No se encontro el prospecto.' });
+  }
+
+  const nextStatus = prospectStatusForOutcome(cleanClassification, prospect.status);
+  const { data: updatedProspect, error: updateError } = await supabase
+    .from('prospects')
+    .update({ status: nextStatus })
+    .eq('id', prospect.id)
+    .select()
+    .single();
+
+  if (updateError) {
+    return res.status(500).json({ error: 'No se pudo actualizar el prospecto.', detail: updateError.message });
+  }
+
+  await supabase
+    .from('prospect_messages')
+    .update({ status: 'RESPONDIDO' })
+    .eq('prospect_id', prospect.id)
+    .eq('status', 'ENVIADO');
+
+  const { data: activity, error: activityError } = await supabase
+    .from('prospect_activities')
+    .insert({
+      prospect_id: prospect.id,
+      type: 'NOTA',
+      description: `Respuesta registrada: ${cleanClassification}.`,
+      metadata: {
+        responseText: cleanResponseText || null,
+        outreachStatus: cleanClassification,
+        nextFollowUpAt: normalizedNextFollowUpAt,
+        notes: cleanNotes || null,
+      },
+    })
+    .select()
+    .single();
+
+  if (activityError) {
+    return res.status(500).json({ error: 'No se pudo guardar la respuesta.', detail: activityError.message });
+  }
+
+  await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: updatedProspect.list_id });
+  return res.status(201).json({ data: { prospect: updatedProspect, activity } });
 });
 
 prospectingRouter.patch('/prospects/:id/status', async (req, res) => {

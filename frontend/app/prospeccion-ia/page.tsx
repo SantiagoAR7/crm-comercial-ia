@@ -7,9 +7,11 @@ import {
   Copy,
   ClipboardList,
   Loader2,
+  Mail,
   MessageSquareText,
   Plus,
   RefreshCw,
+  Reply,
   Save,
   Search,
   Sparkles,
@@ -40,6 +42,15 @@ type ProspectMessage = {
   subject: string | null;
   body: string;
   status: string;
+  created_at?: string;
+};
+
+type ProspectActivity = {
+  id: string;
+  type: string;
+  description: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
 };
 
 type Prospect = {
@@ -68,6 +79,7 @@ type Prospect = {
     confidence: string;
   } | null;
   prospect_messages?: ProspectMessage[];
+  prospect_activities?: ProspectActivity[];
 };
 
 type ListForm = {
@@ -100,6 +112,24 @@ type ProspeoForm = {
   confirmSpend: boolean;
 };
 
+type OutreachForm = {
+  channel: string;
+  contactName: string;
+  contactEmail: string;
+  subject: string;
+  body: string;
+  outreachStatus: string;
+  nextFollowUpAt: string;
+  notes: string;
+};
+
+type ResponseForm = {
+  classification: string;
+  responseText: string;
+  nextFollowUpAt: string;
+  notes: string;
+};
+
 const emptyListForm: ListForm = {
   name: '',
   description: '',
@@ -117,6 +147,24 @@ const emptyProspeoForm: ProspeoForm = {
   companyKeywords: '',
   maxResults: 10,
   confirmSpend: false,
+};
+
+const emptyOutreachForm: OutreachForm = {
+  channel: 'EMAIL',
+  contactName: '',
+  contactEmail: '',
+  subject: '',
+  body: '',
+  outreachStatus: 'CONTACTADO',
+  nextFollowUpAt: '',
+  notes: '',
+};
+
+const emptyResponseForm: ResponseForm = {
+  classification: 'INTERESADO',
+  responseText: '',
+  nextFollowUpAt: '',
+  notes: '',
 };
 
 const sampleImport = `Empresa,Web,Contacto,Cargo,Email,Sector,Ciudad,Pais,Tamano
@@ -140,10 +188,14 @@ export default function AiProspectingPage() {
   const [prospeoUsage, setProspeoUsage] = useState<ProspeoUsage | null>(null);
   const [prospeoForm, setProspeoForm] = useState<ProspeoForm>(emptyProspeoForm);
   const [searchingProspeo, setSearchingProspeo] = useState(false);
+  const [savingOutreach, setSavingOutreach] = useState(false);
+  const [savingResponse, setSavingResponse] = useState(false);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
   const [csvText, setCsvText] = useState('');
   const [messageDrafts, setMessageDrafts] = useState<Record<string, { subject: string; body: string }>>({});
+  const [outreachForm, setOutreachForm] = useState<OutreachForm>(emptyOutreachForm);
+  const [responseForm, setResponseForm] = useState<ResponseForm>(emptyResponseForm);
 
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) || null,
@@ -157,10 +209,20 @@ export default function AiProspectingPage() {
 
   const filteredProspects = useMemo(() => {
     if (prospectFilter === 'TODOS') return prospects;
+    if (prospectFilter === 'CONTACTADO') {
+      return prospects.filter((prospect) => deriveContactState(prospect).status !== 'SIN_CONTACTAR');
+    }
     return prospects.filter((prospect) => prospect.status === prospectFilter);
   }, [prospects, prospectFilter]);
 
   const visibleProspect = selectedProspect || filteredProspects[0] || prospects[0] || null;
+  const selectedMessage = useMemo(
+    () => visibleProspect?.prospect_messages?.find((item) => item.status === 'APROBADO') ||
+      visibleProspect?.prospect_messages?.[0] ||
+      null,
+    [visibleProspect],
+  );
+  const visibleContactState = useMemo(() => deriveContactState(visibleProspect), [visibleProspect]);
 
   const filterCounts = useMemo(() => ({
     TODOS: prospects.length,
@@ -168,6 +230,7 @@ export default function AiProspectingPage() {
     MENSAJE_GENERADO: prospects.filter((prospect) => prospect.status === 'MENSAJE_GENERADO').length,
     APROBADO: prospects.filter((prospect) => prospect.status === 'APROBADO').length,
     DESCARTADO: prospects.filter((prospect) => prospect.status === 'DESCARTADO').length,
+    CONTACTADO: prospects.filter((prospect) => deriveContactState(prospect).status !== 'SIN_CONTACTAR').length,
   }), [prospects]);
 
   const loadLists = useCallback(async () => {
@@ -233,6 +296,18 @@ export default function AiProspectingPage() {
     }
     setMessageDrafts(drafts);
   }, [visibleProspect]);
+
+  useEffect(() => {
+    setOutreachForm({
+      ...emptyOutreachForm,
+      channel: selectedMessage?.channel || 'EMAIL',
+      contactName: visibleProspect?.contact_name || '',
+      contactEmail: visibleProspect?.email || '',
+      subject: selectedMessage?.subject || '',
+      body: selectedMessage?.body || '',
+    });
+    setResponseForm(emptyResponseForm);
+  }, [selectedMessage, visibleProspect]);
 
   async function createList(event: FormEvent) {
     event.preventDefault();
@@ -463,6 +538,53 @@ export default function AiProspectingPage() {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setSavingMessageId(null);
+    }
+  }
+
+  async function saveOutreach(event: FormEvent) {
+    event.preventDefault();
+    if (!visibleProspect) return;
+
+    setSavingOutreach(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/prospects/${visibleProspect.id}/outreach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(outreachForm),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar el seguimiento.');
+      setMessage('Seguimiento guardado en Prospección IA.');
+      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setSavingOutreach(false);
+    }
+  }
+
+  async function saveResponse(event: FormEvent) {
+    event.preventDefault();
+    if (!visibleProspect) return;
+
+    setSavingResponse(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/prospects/${visibleProspect.id}/response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(responseForm),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar la respuesta.');
+      setResponseForm(emptyResponseForm);
+      setMessage('Respuesta registrada en el historial.');
+      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setSavingResponse(false);
     }
   }
 
@@ -703,6 +825,7 @@ export default function AiProspectingPage() {
                   ['NUEVO', 'Nuevos'],
                   ['MENSAJE_GENERADO', 'Generados'],
                   ['APROBADO', 'Aprobados'],
+                  ['CONTACTADO', 'Contactados'],
                   ['DESCARTADO', 'Descartados'],
                 ].map(([value, label]) => (
                   <button
@@ -729,6 +852,7 @@ export default function AiProspectingPage() {
                         <StatusBadge status={prospect.status} />
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <ContactBadge status={deriveContactState(prospect).status} />
                         {prospect.priority && <span className="rounded-full bg-slate-100 px-2.5 py-1 font-bold text-slate-700">{prospect.priority}</span>}
                         {typeof prospect.fit_score === 'number' && <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-bold text-emerald-700">Score {prospect.fit_score}</span>}
                         {prospect.sector && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">{prospect.sector}</span>}
@@ -769,7 +893,7 @@ export default function AiProspectingPage() {
             <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <MessageSquareText size={18} className="text-slate-500" />
-                <h3 className="font-bold text-slate-950">Investigacion y mensajes</h3>
+                <h3 className="font-bold text-slate-950">Investigacion, mensajes y seguimiento</h3>
               </div>
               {visibleProspect ? (
                 <div className="mt-5 space-y-5">
@@ -777,6 +901,11 @@ export default function AiProspectingPage() {
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Empresa</p>
                     <h4 className="mt-1 text-lg font-bold text-slate-950">{visibleProspect.company_name}</h4>
                     <p className="mt-1 text-sm text-slate-500">{visibleProspect.website || visibleProspect.email || 'Sin datos de contacto adicionales'}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <ContactBadge status={visibleContactState.status} />
+                      {visibleContactState.channel && <span className="rounded-full bg-slate-100 px-2.5 py-1 font-bold text-slate-600">{visibleContactState.channel}</span>}
+                      {visibleContactState.nextFollowUpAt && <span className="rounded-full bg-amber-100 px-2.5 py-1 font-bold text-amber-700">Seguimiento {formatDate(visibleContactState.nextFollowUpAt)}</span>}
+                    </div>
                   </div>
 
                   {visibleProspect.prospect_research ? (
@@ -849,6 +978,187 @@ export default function AiProspectingPage() {
                       </article>
                     ))}
                   </div>
+
+                  <section className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-center gap-2">
+                      <Mail size={16} className="text-slate-500" />
+                      <h4 className="font-bold text-slate-950">Registrar contacto</h4>
+                    </div>
+                    <form onSubmit={saveOutreach} className="mt-4 space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Contacto">
+                          <input
+                            value={outreachForm.contactName}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, contactName: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                            placeholder="Nombre del contacto"
+                          />
+                        </Field>
+                        <Field label="Email contacto">
+                          <input
+                            type="email"
+                            value={outreachForm.contactEmail}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, contactEmail: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                            placeholder="correo@empresa.com"
+                          />
+                        </Field>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Canal">
+                          <select
+                            value={outreachForm.channel}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, channel: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                          >
+                            <option value="EMAIL">Email</option>
+                            <option value="WHATSAPP">WhatsApp</option>
+                            <option value="LINKEDIN">LinkedIn</option>
+                            <option value="LLAMADA">Llamada</option>
+                          </select>
+                        </Field>
+                        <Field label="Estado">
+                          <select
+                            value={outreachForm.outreachStatus}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, outreachStatus: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                          >
+                            <option value="CONTACTADO">Contactado</option>
+                            <option value="INTERESADO">Interesado</option>
+                            <option value="MAS_TARDE">Más tarde</option>
+                            <option value="OBJECION">Objeción</option>
+                            <option value="PIDIO_INFO">Pidió info</option>
+                            <option value="REUNION">Reunión</option>
+                            <option value="NO_INTERESADO">No interesado</option>
+                            <option value="NO_CONTACTAR">No contactar</option>
+                          </select>
+                        </Field>
+                      </div>
+                      {outreachForm.channel === 'EMAIL' && (
+                        <Field label="Asunto">
+                          <input
+                            value={outreachForm.subject}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, subject: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                            placeholder="Asunto del email"
+                          />
+                        </Field>
+                      )}
+                      <Field label="Mensaje">
+                        <textarea
+                          value={outreachForm.body}
+                          onChange={(event) => setOutreachForm({ ...outreachForm, body: event.target.value })}
+                          rows={6}
+                          className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm leading-6"
+                          placeholder="Mensaje enviado o por enviar"
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Próximo seguimiento">
+                          <input
+                            type="datetime-local"
+                            value={outreachForm.nextFollowUpAt}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, nextFollowUpAt: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                          />
+                        </Field>
+                        <Field label="Nota interna">
+                          <input
+                            value={outreachForm.notes}
+                            onChange={(event) => setOutreachForm({ ...outreachForm, notes: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                            placeholder="Contexto rápido"
+                          />
+                        </Field>
+                      </div>
+                      <button
+                        disabled={savingOutreach}
+                        className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {savingOutreach ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                        Guardar seguimiento
+                      </button>
+                    </form>
+                  </section>
+
+                  <section className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-center gap-2">
+                      <Reply size={16} className="text-slate-500" />
+                      <h4 className="font-bold text-slate-950">Registrar respuesta</h4>
+                    </div>
+                    <form onSubmit={saveResponse} className="mt-4 space-y-3">
+                      <Field label="Clasificación">
+                        <select
+                          value={responseForm.classification}
+                          onChange={(event) => setResponseForm({ ...responseForm, classification: event.target.value })}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                        >
+                          <option value="INTERESADO">Interesado</option>
+                          <option value="MAS_TARDE">Más tarde</option>
+                          <option value="OBJECION">Objeción</option>
+                          <option value="PIDIO_INFO">Pidió info</option>
+                          <option value="REUNION">Reunión</option>
+                          <option value="NO_INTERESADO">No interesado</option>
+                          <option value="NO_CONTACTAR">No contactar</option>
+                        </select>
+                      </Field>
+                      <Field label="Respuesta del prospecto">
+                        <textarea
+                          value={responseForm.responseText}
+                          onChange={(event) => setResponseForm({ ...responseForm, responseText: event.target.value })}
+                          rows={4}
+                          className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm leading-6"
+                          placeholder="Pega aquí la respuesta o resumen"
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Próximo seguimiento">
+                          <input
+                            type="datetime-local"
+                            value={responseForm.nextFollowUpAt}
+                            onChange={(event) => setResponseForm({ ...responseForm, nextFollowUpAt: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                          />
+                        </Field>
+                        <Field label="Nota interna">
+                          <input
+                            value={responseForm.notes}
+                            onChange={(event) => setResponseForm({ ...responseForm, notes: event.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                            placeholder="Qué hacer después"
+                          />
+                        </Field>
+                      </div>
+                      <button
+                        disabled={savingResponse}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {savingResponse ? <Loader2 className="animate-spin" size={16} /> : <Reply size={16} />}
+                        Guardar respuesta
+                      </button>
+                    </form>
+                  </section>
+
+                  <section className="rounded-lg border border-slate-200 p-4">
+                    <h4 className="font-bold text-slate-950">Historial</h4>
+                    <div className="mt-4 space-y-3">
+                      {(visibleProspect.prospect_activities || []).slice(0, 8).map((activity) => (
+                        <div key={activity.id} className="border-l-2 border-slate-200 pl-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-slate-500">{activity.type}</span>
+                            <span className="text-xs text-slate-400">{formatDate(activity.created_at)}</span>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-700">{activity.description}</p>
+                          {typeof activity.metadata?.notes === 'string' && activity.metadata.notes && (
+                            <p className="mt-1 text-xs text-slate-500">{activity.metadata.notes}</p>
+                          )}
+                        </div>
+                      ))}
+                      {!(visibleProspect.prospect_activities || []).length && (
+                        <p className="text-sm text-slate-500">Sin eventos de seguimiento todavía.</p>
+                      )}
+                    </div>
+                  </section>
                 </div>
               ) : (
                 <p className="mt-5 text-sm text-slate-500">Selecciona un prospecto para revisar el detalle.</p>
@@ -933,6 +1243,34 @@ function normalizeHeader(value: string) {
     .replace(/[^a-z0-9_]/g, '');
 }
 
+function deriveContactState(prospect?: Prospect | null) {
+  const activities = prospect?.prospect_activities || [];
+  const latestTracked = activities.find((activity) => typeof activity.metadata?.outreachStatus === 'string');
+  if (latestTracked) {
+    return {
+      status: String(latestTracked.metadata.outreachStatus),
+      channel: typeof latestTracked.metadata.channel === 'string' ? latestTracked.metadata.channel : '',
+      nextFollowUpAt: typeof latestTracked.metadata.nextFollowUpAt === 'string' ? latestTracked.metadata.nextFollowUpAt : '',
+    };
+  }
+
+  const messages = prospect?.prospect_messages || [];
+  if (messages.some((item) => item.status === 'RESPONDIDO')) return { status: 'RESPONDIDO', channel: '', nextFollowUpAt: '' };
+  if (messages.some((item) => item.status === 'ENVIADO')) return { status: 'CONTACTADO', channel: '', nextFollowUpAt: '' };
+  return { status: 'SIN_CONTACTAR', channel: '', nextFollowUpAt: '' };
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -962,6 +1300,19 @@ function StatusBadge({ status }: { status: string }) {
         : 'bg-slate-100 text-slate-600';
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{status}</span>;
+}
+
+function ContactBadge({ status }: { status: string }) {
+  const label = status.replace(/_/g, ' ');
+  const classes = status === 'SIN_CONTACTAR'
+    ? 'bg-slate-100 text-slate-500'
+    : status === 'NO_INTERESADO' || status === 'NO_CONTACTAR'
+      ? 'bg-rose-100 text-rose-700'
+      : status === 'MAS_TARDE' || status === 'OBJECION'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-blue-100 text-blue-700';
+
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{label}</span>;
 }
 
 function InfoBlock({ title, text }: { title: string; text?: string | null }) {
