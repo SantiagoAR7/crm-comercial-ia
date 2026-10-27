@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   ClipboardList,
+  Inbox,
   Loader2,
   Mail,
   MessageSquareText,
@@ -115,6 +116,37 @@ type EmailStatus = {
   pollIntervalSeconds: number;
 };
 
+type CampaignSummary = {
+  metrics: {
+    totalProspects: number;
+    researched: number;
+    approved: number;
+    discarded: number;
+    sentEmails: number;
+    replies: number;
+    interested: number;
+    later: number;
+    notInterested: number;
+    meetings: number;
+    pendingFollowUps: number;
+  };
+  inbox: InboxItem[];
+};
+
+type InboxItem = {
+  id: string;
+  prospectId: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  prospectStatus: string;
+  subject: string;
+  body: string;
+  outcome: string;
+  nextFollowUpAt: string;
+  createdAt: string;
+};
+
 type ProspeoForm = {
   jobTitles: string;
   locations: string;
@@ -205,6 +237,9 @@ export default function AiProspectingPage() {
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
   const [pollingEmail, setPollingEmail] = useState(false);
   const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
+  const [campaignSummary, setCampaignSummary] = useState<CampaignSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [classifyingActivityId, setClassifyingActivityId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
   const [csvText, setCsvText] = useState('');
@@ -248,6 +283,20 @@ export default function AiProspectingPage() {
     CONTACTADO: prospects.filter((prospect) => deriveContactState(prospect).status !== 'SIN_CONTACTAR').length,
   }), [prospects]);
 
+  const selectedListMetrics = campaignSummary?.metrics || {
+    totalProspects: prospects.length,
+    researched: prospects.filter((prospect) => ['INVESTIGADO', 'MENSAJE_GENERADO', 'APROBADO', 'CONVERTIDO'].includes(prospect.status)).length,
+    approved: prospects.filter((prospect) => ['APROBADO', 'CONVERTIDO'].includes(prospect.status)).length,
+    discarded: prospects.filter((prospect) => prospect.status === 'DESCARTADO').length,
+    sentEmails: prospects.reduce((total, prospect) => total + (prospect.prospect_messages || []).filter((item) => item.channel === 'EMAIL' && ['ENVIADO', 'RESPONDIDO'].includes(item.status)).length, 0),
+    replies: prospects.reduce((total, prospect) => total + (prospect.prospect_activities || []).filter((item) => item.metadata?.emailDirection === 'inbound' || item.metadata?.responseText).length, 0),
+    interested: 0,
+    later: 0,
+    notInterested: 0,
+    meetings: 0,
+    pendingFollowUps: 0,
+  };
+
   const loadLists = useCallback(async () => {
     setLoadingLists(true);
     setMessage('');
@@ -285,6 +334,23 @@ export default function AiProspectingPage() {
     }
   }, []);
 
+  const loadCampaignSummary = useCallback(async (listId: string) => {
+    if (!listId) {
+      setCampaignSummary(null);
+      return;
+    }
+    setLoadingSummary(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/lists/${listId}/summary`, { cache: 'no-store' });
+      const body = await response.json();
+      if (response.ok) setCampaignSummary(body.data || null);
+    } catch {
+      setCampaignSummary(null);
+    } finally {
+      setLoadingSummary(false);
+    }
+  }, []);
+
   const loadProspects = useCallback(async (listId: string) => {
     if (!listId) {
       setProspects([]);
@@ -313,7 +379,8 @@ export default function AiProspectingPage() {
 
   useEffect(() => {
     loadProspects(selectedListId);
-  }, [selectedListId, loadProspects]);
+    loadCampaignSummary(selectedListId);
+  }, [selectedListId, loadProspects, loadCampaignSummary]);
 
   useEffect(() => {
     const drafts: Record<string, { subject: string; body: string }> = {};
@@ -388,7 +455,7 @@ export default function AiProspectingPage() {
       setCsvText('');
       const skippedText = body.skipped ? ` ${body.skipped} duplicados omitidos.` : '';
       setMessage(`${body.inserted || 0} prospectos importados.${skippedText}`);
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -404,7 +471,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo generar la investigacion.');
       setSelectedProspectId(prospectId);
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -425,7 +492,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo generar el lote.');
       setMessage(`${body.generated || 0} prospectos generados para revision.`);
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -464,7 +531,7 @@ export default function AiProspectingPage() {
       setProspeoForm((current) => ({ ...current, confirmSpend: false }));
       setProspeoUsage(body.usage || null);
       setMessage(`${body.inserted || 0} prospectos importados desde Prospeo. ${body.skipped || 0} duplicados omitidos. Búsquedas restantes hoy: ${body.usage?.searchRemaining ?? '—'}.`);
-      await Promise.all([loadLists(), loadProspects(selectedListId), loadProspeoUsage()]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId), loadProspeoUsage()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
       await loadProspeoUsage();
@@ -483,7 +550,7 @@ export default function AiProspectingPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo actualizar el prospecto.');
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     }
@@ -559,7 +626,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar el mensaje.');
       setMessage(status ? `Mensaje marcado como ${status}.` : 'Mensaje guardado.');
-      await loadProspects(selectedListId);
+      await Promise.all([loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -592,7 +659,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo enviar el email.');
       setMessage('Email enviado y seguimiento guardado.');
-      await Promise.all([loadLists(), loadProspects(selectedListId), loadEmailStatus()]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId), loadEmailStatus()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -610,7 +677,7 @@ export default function AiProspectingPage() {
       const processed = body.data?.processed || 0;
       const skipped = body.data?.skipped || 0;
       setMessage(`${processed} respuestas registradas. ${skipped} correos ignorados por no pertenecer a Prospección IA.`);
-      await loadProspects(selectedListId);
+      await Promise.all([loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -633,7 +700,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar el seguimiento.');
       setMessage('Seguimiento guardado en Prospección IA.');
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
@@ -657,11 +724,32 @@ export default function AiProspectingPage() {
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar la respuesta.');
       setResponseForm(emptyResponseForm);
       setMessage('Respuesta registrada en el historial.');
-      await Promise.all([loadLists(), loadProspects(selectedListId)]);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setSavingResponse(false);
+    }
+  }
+
+  async function classifyInboxItem(item: InboxItem, classification: string) {
+    setClassifyingActivityId(item.id);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/activities/${item.id}/outcome`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classification }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo clasificar la respuesta.');
+      setSelectedProspectId(item.prospectId);
+      setMessage(`Respuesta marcada como ${classification.replace(/_/g, ' ')}.`);
+      await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setClassifyingActivityId(null);
     }
   }
 
@@ -910,6 +998,105 @@ export default function AiProspectingPage() {
             </div>
           </section>
 
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Inbox size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Panel de campaña</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedList ? selectedList.name : 'Selecciona una lista para ver el seguimiento.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadCampaignSummary(selectedListId)}
+                disabled={!selectedListId || loadingSummary}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingSummary ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                Actualizar panel
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <CampaignMetric label="Emails enviados" value={selectedListMetrics.sentEmails} tone="blue" />
+              <CampaignMetric label="Respuestas" value={selectedListMetrics.replies} tone="slate" />
+              <CampaignMetric label="Interesados" value={selectedListMetrics.interested} tone="emerald" />
+              <CampaignMetric label="Más tarde" value={selectedListMetrics.later} tone="amber" />
+              <CampaignMetric label="No interesados" value={selectedListMetrics.notInterested} tone="rose" />
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <CampaignMetric label="Reuniones" value={selectedListMetrics.meetings} tone="emerald" compact />
+              <CampaignMetric label="Seguimientos vencidos" value={selectedListMetrics.pendingFollowUps} tone="amber" compact />
+              <CampaignMetric label="Descartados" value={selectedListMetrics.discarded} tone="slate" compact />
+            </div>
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-bold text-slate-950">Bandeja de respuestas</h4>
+                <span className="text-xs font-semibold text-slate-500">{campaignSummary?.inbox.length || 0} recientes</span>
+              </div>
+              <div className="mt-3 space-y-3">
+                {(campaignSummary?.inbox || []).map((item) => (
+                  <article key={item.id} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProspectId(item.prospectId)}
+                        className="min-w-0 text-left"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="font-bold text-slate-950">{item.companyName || 'Prospecto sin empresa'}</h5>
+                          <ContactBadge status={item.outcome || 'RESPONDIDO'} />
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {[item.contactName, item.contactEmail].filter(Boolean).join(' · ') || 'Sin remitente'} · {formatDate(item.createdAt)}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProspectId(item.prospectId)}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        Ver prospecto
+                      </button>
+                    </div>
+                    {item.subject && <p className="mt-3 text-sm font-semibold text-slate-700">{item.subject}</p>}
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{item.body || 'Sin texto de respuesta.'}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        ['INTERESADO', 'Interesado'],
+                        ['MAS_TARDE', 'Más tarde'],
+                        ['PIDIO_INFO', 'Pidió info'],
+                        ['REUNION', 'Reunión'],
+                        ['NO_INTERESADO', 'No interesado'],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => classifyInboxItem(item, value)}
+                          disabled={classifyingActivityId === item.id}
+                          className={`rounded-lg border px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${item.outcome === value ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                        >
+                          {classifyingActivityId === item.id ? 'Guardando...' : label}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+                {!campaignSummary?.inbox.length && (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center">
+                    <Reply className="mx-auto text-slate-400" size={20} />
+                    <p className="mt-3 text-sm font-semibold text-slate-700">Sin respuestas registradas en esta lista</p>
+                    <p className="mt-1 text-sm text-slate-500">Cuando alguien responda un email con token de Prospección IA aparecerá aquí.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1079,7 +1266,7 @@ export default function AiProspectingPage() {
                           {item.channel === 'EMAIL' && (
                             <button
                               onClick={() => sendEmailMessage(item)}
-                              disabled={sendingEmailId === item.id || !emailStatus?.enabled || !emailStatus?.smtpConfigured}
+                              disabled={sendingEmailId === item.id || !emailStatus?.enabled || !(emailStatus?.graphConfigured || emailStatus?.smtpConfigured)}
                               className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {sendingEmailId === item.id ? <Loader2 className="animate-spin" size={16} /> : <Mail size={16} />}
@@ -1406,6 +1593,23 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
       <p className="mt-3 text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-2xl font-bold text-slate-950">{value.toLocaleString('es-ES')}</p>
     </article>
+  );
+}
+
+function CampaignMetric({ label, value, tone, compact = false }: { label: string; value: number; tone: 'slate' | 'blue' | 'emerald' | 'amber' | 'rose'; compact?: boolean }) {
+  const classes = {
+    slate: 'border-slate-200 bg-slate-50 text-slate-800',
+    blue: 'border-blue-100 bg-blue-50 text-blue-800',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-800',
+    amber: 'border-amber-100 bg-amber-50 text-amber-800',
+    rose: 'border-rose-100 bg-rose-50 text-rose-800',
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border px-4 ${compact ? 'py-3' : 'py-4'} ${classes}`}>
+      <p className="text-xs font-bold uppercase text-current opacity-70">{label}</p>
+      <p className={`${compact ? 'mt-1 text-xl' : 'mt-2 text-2xl'} font-bold`}>{value.toLocaleString('es-ES')}</p>
+    </div>
   );
 }
 

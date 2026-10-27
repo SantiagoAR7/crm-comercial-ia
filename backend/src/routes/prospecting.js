@@ -481,6 +481,18 @@ function prospectStatusForOutcome(status, currentStatus) {
   return currentStatus;
 }
 
+function activityOutcome(activity) {
+  const metadata = activity?.metadata || {};
+  if (typeof metadata.outreachStatus === 'string' && metadata.outreachStatus) return metadata.outreachStatus;
+  if (metadata.emailDirection === 'inbound') return 'RESPONDIDO';
+  return '';
+}
+
+function activityBody(activity) {
+  const metadata = activity?.metadata || {};
+  return normalizeText(metadata.responseText || metadata.body || metadata.notes || '');
+}
+
 async function loadList(listId) {
   const { data, error } = await supabase
     .from('prospecting_lists')
@@ -522,6 +534,108 @@ prospectingRouter.post('/email/poll-now', async (_req, res) => {
       detail: error instanceof Error ? error.message : 'Error desconocido.',
     });
   }
+});
+
+prospectingRouter.get('/lists/:id/summary', async (req, res) => {
+  const { data: list, error: listError } = await loadList(req.params.id);
+  if (listError) return res.status(404).json({ error: 'No se encontro la lista.' });
+
+  const { data: prospects, error: prospectsError } = await supabase
+    .from('prospects')
+    .select('id, company_name, contact_name, email, status, priority, created_at')
+    .eq('list_id', list.id);
+
+  if (prospectsError) {
+    return res.status(500).json({ error: 'No se pudieron calcular las metricas.', detail: prospectsError.message });
+  }
+
+  const prospectIds = (prospects || []).map((prospect) => prospect.id);
+  const metrics = {
+    totalProspects: prospects?.length || 0,
+    researched: prospects?.filter((prospect) => ['INVESTIGADO', 'MENSAJE_GENERADO', 'APROBADO', 'CONVERTIDO'].includes(prospect.status)).length || 0,
+    approved: prospects?.filter((prospect) => ['APROBADO', 'CONVERTIDO'].includes(prospect.status)).length || 0,
+    discarded: prospects?.filter((prospect) => prospect.status === 'DESCARTADO').length || 0,
+    sentEmails: 0,
+    replies: 0,
+    interested: 0,
+    later: 0,
+    notInterested: 0,
+    meetings: 0,
+    pendingFollowUps: 0,
+  };
+
+  if (!prospectIds.length) {
+    return res.json({ data: { metrics, inbox: [], list } });
+  }
+
+  const [{ data: messages, error: messagesError }, { data: activities, error: activitiesError }] = await Promise.all([
+    supabase
+      .from('prospect_messages')
+      .select('id, prospect_id, channel, status, created_at')
+      .in('prospect_id', prospectIds),
+    supabase
+      .from('prospect_activities')
+      .select('id, prospect_id, type, description, metadata, created_at, prospects(id, company_name, contact_name, email, status)')
+      .in('prospect_id', prospectIds)
+      .order('created_at', { ascending: false })
+      .limit(120),
+  ]);
+
+  if (messagesError) {
+    return res.status(500).json({ error: 'No se pudieron cargar los mensajes.', detail: messagesError.message });
+  }
+  if (activitiesError) {
+    return res.status(500).json({ error: 'No se pudieron cargar las respuestas.', detail: activitiesError.message });
+  }
+
+  metrics.sentEmails = (messages || []).filter((message) => (
+    message.channel === 'EMAIL' && ['ENVIADO', 'RESPONDIDO'].includes(message.status)
+  )).length;
+
+  const latestFollowUpByProspect = new Map();
+  const now = Date.now();
+  const inbox = [];
+
+  for (const activity of activities || []) {
+    const metadata = activity.metadata || {};
+    const outcome = activityOutcome(activity);
+    const nextFollowUpAt = typeof metadata.nextFollowUpAt === 'string' ? metadata.nextFollowUpAt : '';
+    if (nextFollowUpAt) {
+      const timestamp = new Date(nextFollowUpAt).getTime();
+      if (Number.isFinite(timestamp)) {
+        const current = latestFollowUpByProspect.get(activity.prospect_id);
+        if (!current || timestamp > current) latestFollowUpByProspect.set(activity.prospect_id, timestamp);
+      }
+    }
+
+    if (metadata.emailDirection === 'inbound' || metadata.responseText) {
+      metrics.replies += 1;
+      if (outcome === 'INTERESADO' || outcome === 'PIDIO_INFO') metrics.interested += 1;
+      if (outcome === 'MAS_TARDE') metrics.later += 1;
+      if (outcome === 'NO_INTERESADO' || outcome === 'NO_CONTACTAR') metrics.notInterested += 1;
+      if (outcome === 'REUNION') metrics.meetings += 1;
+
+      inbox.push({
+        id: activity.id,
+        prospectId: activity.prospect_id,
+        companyName: activity.prospects?.company_name || '',
+        contactName: activity.prospects?.contact_name || '',
+        contactEmail: metadata.from || activity.prospects?.email || '',
+        prospectStatus: activity.prospects?.status || '',
+        subject: metadata.subject || '',
+        body: activityBody(activity),
+        outcome,
+        nextFollowUpAt,
+        createdAt: activity.created_at,
+      });
+    }
+  }
+
+  metrics.pendingFollowUps = Array.from(latestFollowUpByProspect.values())
+    .filter((timestamp) => timestamp <= now)
+    .length;
+
+  return res.json({ data: { metrics, inbox: inbox.slice(0, 50), list } });
 });
 
 prospectingRouter.post('/lists', async (req, res) => {
@@ -1373,6 +1487,84 @@ prospectingRouter.post('/prospects/:id/response', async (req, res) => {
 
   await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: updatedProspect.list_id });
   return res.status(201).json({ data: { prospect: updatedProspect, activity } });
+});
+
+prospectingRouter.patch('/activities/:id/outcome', async (req, res) => {
+  const {
+    classification = 'INTERESADO',
+    nextFollowUpAt = '',
+    notes = '',
+  } = req.body ?? {};
+
+  const cleanClassification = normalizeText(classification).toUpperCase();
+  const cleanNotes = normalizeText(notes);
+  const normalizedNextFollowUpAt = normalizeDateTime(nextFollowUpAt);
+
+  if (!allowedOutreachStatuses.has(cleanClassification)) {
+    return res.status(400).json({ error: 'La clasificacion de respuesta no es valida.' });
+  }
+
+  const { data: activity, error: activityError } = await supabase
+    .from('prospect_activities')
+    .select('id, prospect_id, metadata')
+    .eq('id', req.params.id)
+    .single();
+
+  if (activityError) {
+    return res.status(404).json({ error: 'No se encontro la actividad.' });
+  }
+
+  const { data: prospect, error: prospectError } = await supabase
+    .from('prospects')
+    .select('id, list_id, status')
+    .eq('id', activity.prospect_id)
+    .single();
+
+  if (prospectError) {
+    return res.status(404).json({ error: 'No se encontro el prospecto de la actividad.' });
+  }
+
+  const nextStatus = prospectStatusForOutcome(cleanClassification, prospect.status);
+  const nextMetadata = {
+    ...(activity.metadata || {}),
+    outreachStatus: cleanClassification,
+    nextFollowUpAt: normalizedNextFollowUpAt,
+    notes: cleanNotes || activity.metadata?.notes || null,
+    classifiedAt: new Date().toISOString(),
+  };
+
+  const [{ data: updatedActivity, error: updateActivityError }, { data: updatedProspect, error: updateProspectError }] = await Promise.all([
+    supabase
+      .from('prospect_activities')
+      .update({ metadata: nextMetadata })
+      .eq('id', activity.id)
+      .select()
+      .single(),
+    supabase
+      .from('prospects')
+      .update({ status: nextStatus })
+      .eq('id', prospect.id)
+      .select()
+      .single(),
+  ]);
+
+  if (updateActivityError) {
+    return res.status(500).json({ error: 'No se pudo actualizar la respuesta.', detail: updateActivityError.message });
+  }
+  if (updateProspectError) {
+    return res.status(500).json({ error: 'No se pudo actualizar el prospecto.', detail: updateProspectError.message });
+  }
+
+  await Promise.all([
+    supabase
+      .from('prospect_messages')
+      .update({ status: 'RESPONDIDO' })
+      .eq('prospect_id', prospect.id)
+      .eq('status', 'ENVIADO'),
+    supabase.rpc('refresh_prospecting_list_counters', { p_list_id: prospect.list_id }),
+  ]);
+
+  return res.json({ data: { prospect: updatedProspect, activity: updatedActivity } });
 });
 
 prospectingRouter.patch('/prospects/:id/status', async (req, res) => {
