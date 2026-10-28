@@ -16,6 +16,7 @@ const prospeoApiKey = process.env.PROSPEO_API_KEY;
 const prospeoDailySearchLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_SEARCH_LIMIT || 50));
 const prospeoDailyEnrichLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_ENRICH_LIMIT || 0));
 const prospectingDailyEmailLimit = Math.max(0, Number(process.env.PROSPECTING_EMAIL_DAILY_SEND_LIMIT || 50));
+const prospectingFollowupDelayDays = Math.max(1, Number(process.env.PROSPECTING_FOLLOWUP_DELAY_DAYS || 3));
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const prospeoUsagePath = path.join(dataDir, 'prospeo-usage.json');
 
@@ -501,6 +502,153 @@ function activityBody(activity) {
   return body;
 }
 
+function emptySequenceSummary() {
+  return {
+    delayDays: prospectingFollowupDelayDays,
+    metrics: {
+      missingEmail: 0,
+      pendingFirstEmail: 0,
+      waitingReply: 0,
+      readyFollowUp: 0,
+      responded: 0,
+      stopped: 0,
+    },
+    actions: [],
+  };
+}
+
+function buildSequenceSummary({ prospects = [], messages = [], activities = [] }) {
+  const sequence = emptySequenceSummary();
+  const now = Date.now();
+  const dueMs = prospectingFollowupDelayDays * 24 * 60 * 60 * 1000;
+  const messagesByProspect = new Map();
+  const activitiesByProspect = new Map();
+
+  for (const message of messages || []) {
+    if (message.channel !== 'EMAIL') continue;
+    const items = messagesByProspect.get(message.prospect_id) || [];
+    items.push(message);
+    messagesByProspect.set(message.prospect_id, items);
+  }
+  for (const activity of activities || []) {
+    const items = activitiesByProspect.get(activity.prospect_id) || [];
+    items.push(activity);
+    activitiesByProspect.set(activity.prospect_id, items);
+  }
+
+  for (const prospect of prospects || []) {
+    const emailMessages = (messagesByProspect.get(prospect.id) || [])
+      .sort((a, b) => Number(a.step || 0) - Number(b.step || 0) || new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const prospectActivities = activitiesByProspect.get(prospect.id) || [];
+    const latestOutcome = prospectActivities
+      .map(activityOutcome)
+      .find(Boolean);
+    const outboundActivities = prospectActivities
+      .filter((activity) => activity.metadata?.emailDirection === 'outbound')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const inboundActivities = prospectActivities
+      .filter((activity) => activity.metadata?.emailDirection === 'inbound' || activity.metadata?.responseText)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const baseAction = {
+      prospectId: prospect.id,
+      companyName: prospect.company_name,
+      contactName: prospect.contact_name || '',
+      contactEmail: prospect.email || '',
+      prospectStatus: prospect.status,
+      outcome: latestOutcome,
+    };
+
+    if (!prospect.email) {
+      sequence.metrics.missingEmail += 1;
+      sequence.actions.push({
+        ...baseAction,
+        type: 'MISSING_EMAIL',
+        label: 'Falta email',
+        detail: 'Completa o enriquece el email antes de contactar.',
+      });
+      continue;
+    }
+
+    if (prospect.status === 'DESCARTADO' || ['NO_CONTACTAR', 'NO_INTERESADO'].includes(latestOutcome)) {
+      sequence.metrics.stopped += 1;
+      sequence.actions.push({
+        ...baseAction,
+        type: 'STOPPED',
+        label: latestOutcome || 'Descartado',
+        detail: 'Secuencia detenida para evitar nuevo contacto.',
+      });
+      continue;
+    }
+
+    if (inboundActivities.length) {
+      sequence.metrics.responded += 1;
+      sequence.actions.push({
+        ...baseAction,
+        type: 'RESPONDED',
+        label: 'Respondió',
+        detail: cleanReplyBody(activityBody(inboundActivities[0])).slice(0, 180),
+        lastActivityAt: inboundActivities[0].created_at,
+      });
+      continue;
+    }
+
+    const sentEmailMessages = emailMessages.filter((message) => ['ENVIADO', 'RESPONDIDO'].includes(message.status));
+    const nextUnsent = emailMessages.find((message) => !['ENVIADO', 'RESPONDIDO', 'DESCARTADO'].includes(message.status));
+
+    if (!sentEmailMessages.length) {
+      sequence.metrics.pendingFirstEmail += 1;
+      sequence.actions.push({
+        ...baseAction,
+        type: 'PENDING_FIRST_EMAIL',
+        label: nextUnsent ? 'Enviar paso 1' : 'Generar mensaje',
+        detail: nextUnsent ? 'Primer email listo para revisión y envío.' : 'Genera o crea un email inicial antes de contactar.',
+        nextMessageId: nextUnsent?.id || null,
+        nextMessageSubject: nextUnsent?.subject || '',
+      });
+      continue;
+    }
+
+    const lastSentAt = outboundActivities[0]?.created_at || sentEmailMessages[sentEmailMessages.length - 1]?.created_at;
+    const lastSentTimestamp = new Date(lastSentAt).getTime();
+    const isDue = Number.isFinite(lastSentTimestamp) && now - lastSentTimestamp >= dueMs;
+
+    if (isDue && nextUnsent) {
+      sequence.metrics.readyFollowUp += 1;
+      sequence.actions.push({
+        ...baseAction,
+        type: 'READY_FOLLOW_UP',
+        label: `Enviar follow-up ${nextUnsent.step}`,
+        detail: `Sin respuesta desde ${formatDateOnly(lastSentAt)}.`,
+        lastSentAt,
+        nextMessageId: nextUnsent.id,
+        nextMessageSubject: nextUnsent.subject || '',
+      });
+      continue;
+    }
+
+    sequence.metrics.waitingReply += 1;
+    sequence.actions.push({
+      ...baseAction,
+      type: 'WAITING_REPLY',
+      label: 'Esperando respuesta',
+      detail: lastSentAt ? `Último email: ${formatDateOnly(lastSentAt)}.` : 'Email enviado.',
+      lastSentAt,
+      nextMessageId: nextUnsent?.id || null,
+      nextMessageSubject: nextUnsent?.subject || '',
+    });
+  }
+
+  sequence.actions = sequence.actions.slice(0, 75);
+  return sequence;
+}
+
+function formatDateOnly(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'fecha no disponible';
+  return date.toISOString().slice(0, 10);
+}
+
 async function prospectingEmailUsageSummary() {
   const { count, error } = await supabase
     .from('prospect_activities')
@@ -611,13 +759,13 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
   };
 
   if (!prospectIds.length) {
-    return res.json({ data: { metrics, inbox: [], followUps: [], list } });
+    return res.json({ data: { metrics, inbox: [], followUps: [], sequence: emptySequenceSummary(), list } });
   }
 
   const [{ data: messages, error: messagesError }, { data: activities, error: activitiesError }] = await Promise.all([
     supabase
       .from('prospect_messages')
-      .select('id, prospect_id, channel, status, created_at')
+      .select('id, prospect_id, channel, step, subject, status, created_at')
       .in('prospect_id', prospectIds),
     supabase
       .from('prospect_activities')
@@ -701,7 +849,15 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(0, 25);
 
-  return res.json({ data: { metrics, inbox: inbox.slice(0, 50), followUps, list } });
+  return res.json({
+    data: {
+      metrics,
+      inbox: inbox.slice(0, 50),
+      followUps,
+      sequence: buildSequenceSummary({ prospects, messages, activities }),
+      list,
+    },
+  });
 });
 
 prospectingRouter.post('/lists', async (req, res) => {

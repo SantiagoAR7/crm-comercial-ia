@@ -138,6 +138,7 @@ type CampaignSummary = {
   };
   inbox: InboxItem[];
   followUps: FollowUpItem[];
+  sequence: SequenceSummary;
 };
 
 type InboxItem = {
@@ -164,6 +165,35 @@ type FollowUpItem = {
   nextFollowUpAt: string;
   overdue: boolean;
   note: string;
+};
+
+type SequenceSummary = {
+  delayDays: number;
+  metrics: {
+    missingEmail: number;
+    pendingFirstEmail: number;
+    waitingReply: number;
+    readyFollowUp: number;
+    responded: number;
+    stopped: number;
+  };
+  actions: SequenceAction[];
+};
+
+type SequenceAction = {
+  prospectId: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  prospectStatus: string;
+  outcome: string;
+  type: string;
+  label: string;
+  detail: string;
+  lastSentAt?: string;
+  lastActivityAt?: string;
+  nextMessageId?: string | null;
+  nextMessageSubject?: string;
 };
 
 type ProspeoForm = {
@@ -314,6 +344,19 @@ export default function AiProspectingPage() {
     notInterested: 0,
     meetings: 0,
     pendingFollowUps: 0,
+  };
+
+  const sequenceSummary = campaignSummary?.sequence || {
+    delayDays: 3,
+    metrics: {
+      missingEmail: 0,
+      pendingFirstEmail: 0,
+      waitingReply: 0,
+      readyFollowUp: 0,
+      responded: 0,
+      stopped: 0,
+    },
+    actions: [],
   };
 
   const loadLists = useCallback(async () => {
@@ -1154,6 +1197,64 @@ export default function AiProspectingPage() {
                 )}
               </div>
             </div>
+
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-950">Secuencia de emails</h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Follow-up sugerido después de {sequenceSummary.delayDays} días sin respuesta.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                  {sequenceSummary.actions.length} acciones
+                </span>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                <CampaignMetric label="Sin email" value={sequenceSummary.metrics.missingEmail} tone="rose" compact />
+                <CampaignMetric label="Paso 1" value={sequenceSummary.metrics.pendingFirstEmail} tone="blue" compact />
+                <CampaignMetric label="Esperando" value={sequenceSummary.metrics.waitingReply} tone="slate" compact />
+                <CampaignMetric label="Follow-up" value={sequenceSummary.metrics.readyFollowUp} tone="amber" compact />
+                <CampaignMetric label="Respondidos" value={sequenceSummary.metrics.responded} tone="emerald" compact />
+                <CampaignMetric label="Detenidos" value={sequenceSummary.metrics.stopped} tone="rose" compact />
+              </div>
+              <div className="mt-3 space-y-3">
+                {sequenceSummary.actions.slice(0, 8).map((item) => (
+                  <article key={`${item.prospectId}-${item.type}-${item.nextMessageId || item.lastSentAt || item.lastActivityAt || 'action'}`} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <button type="button" onClick={() => setSelectedProspectId(item.prospectId)} className="min-w-0 text-left">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="font-bold text-slate-950">{item.companyName || 'Prospecto sin empresa'}</h5>
+                          <SequenceBadge type={item.type} label={item.label} />
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {[item.contactName, item.contactEmail].filter(Boolean).join(' · ') || 'Sin contacto'}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProspectId(item.prospectId)}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        Revisar
+                      </button>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
+                    {item.nextMessageSubject && (
+                      <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                        Siguiente asunto: {item.nextMessageSubject}
+                      </p>
+                    )}
+                  </article>
+                ))}
+                {!sequenceSummary.actions.length && (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center">
+                    <p className="text-sm font-semibold text-slate-700">Sin acciones de secuencia</p>
+                    <p className="mt-1 text-sm text-slate-500">Cuando haya prospectos con mensajes o emails enviados aparecerán aquí.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -1710,6 +1811,20 @@ function ContactBadge({ status }: { status: string }) {
       : status === 'MAS_TARDE' || status === 'OBJECION'
         ? 'bg-amber-100 text-amber-700'
         : 'bg-blue-100 text-blue-700';
+
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{label}</span>;
+}
+
+function SequenceBadge({ type, label }: { type: string; label: string }) {
+  const classes = type === 'READY_FOLLOW_UP'
+    ? 'bg-amber-100 text-amber-700'
+    : type === 'RESPONDED'
+      ? 'bg-emerald-100 text-emerald-700'
+      : type === 'STOPPED' || type === 'MISSING_EMAIL'
+        ? 'bg-rose-100 text-rose-700'
+        : type === 'PENDING_FIRST_EMAIL'
+          ? 'bg-blue-100 text-blue-700'
+          : 'bg-slate-100 text-slate-600';
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{label}</span>;
 }
