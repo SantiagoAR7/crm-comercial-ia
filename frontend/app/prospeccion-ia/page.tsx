@@ -15,6 +15,7 @@ import {
   Reply,
   Save,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -91,6 +92,17 @@ type ListForm = {
   targetRole: string;
   pain: string;
   offer: string;
+};
+
+type CampaignCriteriaForm = {
+  sector: string;
+  country: string;
+  targetRole: string;
+  pain: string;
+  offer: string;
+  companySize: string;
+  excludedSectors: string;
+  searchNotes: string;
 };
 
 type ProspeoUsage = {
@@ -233,6 +245,17 @@ const emptyListForm: ListForm = {
   offer: '',
 };
 
+const emptyCampaignCriteriaForm: CampaignCriteriaForm = {
+  sector: '',
+  country: '',
+  targetRole: '',
+  pain: '',
+  offer: '',
+  companySize: '',
+  excludedSectors: '',
+  searchNotes: '',
+};
+
 const emptyProspeoForm: ProspeoForm = {
   jobTitles: 'gerente, director, responsable mantenimiento, operaciones',
   locations: 'Alicante, Spain',
@@ -272,6 +295,7 @@ export default function AiProspectingPage() {
   const [loadingLists, setLoadingLists] = useState(true);
   const [loadingProspects, setLoadingProspects] = useState(false);
   const [creatingList, setCreatingList] = useState(false);
+  const [savingCriteria, setSavingCriteria] = useState(false);
   const [importing, setImporting] = useState(false);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
@@ -292,6 +316,7 @@ export default function AiProspectingPage() {
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
+  const [criteriaForm, setCriteriaForm] = useState<CampaignCriteriaForm>(emptyCampaignCriteriaForm);
   const [csvText, setCsvText] = useState('');
   const [messageDrafts, setMessageDrafts] = useState<Record<string, { subject: string; body: string }>>({});
   const [outreachForm, setOutreachForm] = useState<OutreachForm>(emptyOutreachForm);
@@ -359,6 +384,19 @@ export default function AiProspectingPage() {
     },
     actions: [],
   };
+  const criteriaReadiness = useMemo(() => {
+    const items = [
+      { label: 'Sector', ready: Boolean(criteriaForm.sector.trim()) },
+      { label: 'Ubicación', ready: Boolean(criteriaForm.country.trim() || prospeoForm.locations.trim()) },
+      { label: 'Cargo objetivo', ready: Boolean(criteriaForm.targetRole.trim() || prospeoForm.jobTitles.trim()) },
+      { label: 'Dolor/oferta', ready: Boolean(criteriaForm.pain.trim() && criteriaForm.offer.trim()) },
+    ];
+    return {
+      items,
+      readyCount: items.filter((item) => item.ready).length,
+      total: items.length,
+    };
+  }, [criteriaForm, prospeoForm.jobTitles, prospeoForm.locations]);
 
   const loadLists = useCallback(async () => {
     setLoadingLists(true);
@@ -446,6 +484,29 @@ export default function AiProspectingPage() {
   }, [selectedListId, loadProspects, loadCampaignSummary]);
 
   useEffect(() => {
+    const icp = selectedList?.icp || {};
+    const nextCriteria = {
+      sector: readIcpString(icp, 'sector'),
+      country: readIcpString(icp, 'country'),
+      targetRole: readIcpString(icp, 'targetRole'),
+      pain: readIcpString(icp, 'pain'),
+      offer: readIcpString(icp, 'offer'),
+      companySize: readIcpString(icp, 'companySize'),
+      excludedSectors: readIcpString(icp, 'excludedSectors'),
+      searchNotes: readIcpString(icp, 'searchNotes'),
+    };
+    setCriteriaForm(nextCriteria);
+    setProspeoForm((current) => ({
+      ...current,
+      jobTitles: nextCriteria.targetRole || current.jobTitles,
+      locations: nextCriteria.country || current.locations,
+      industries: nextCriteria.sector || current.industries,
+      companyKeywords: current.companyKeywords,
+      confirmSpend: false,
+    }));
+  }, [selectedList]);
+
+  useEffect(() => {
     const drafts: Record<string, { subject: string; body: string }> = {};
     for (const item of visibleProspect?.prospect_messages || []) {
       drafts[item.id] = { subject: item.subject || '', body: item.body || '' };
@@ -494,6 +555,49 @@ export default function AiProspectingPage() {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setCreatingList(false);
+    }
+  }
+
+  async function saveCampaignCriteria(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedListId || !selectedList) return;
+
+    setSavingCriteria(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/lists/${selectedListId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          icp: {
+            ...(selectedList.icp || {}),
+            sector: criteriaForm.sector,
+            country: criteriaForm.country,
+            targetRole: criteriaForm.targetRole,
+            pain: criteriaForm.pain,
+            offer: criteriaForm.offer,
+            companySize: criteriaForm.companySize,
+            excludedSectors: criteriaForm.excludedSectors,
+            searchNotes: criteriaForm.searchNotes,
+          },
+          status: selectedList.status === 'BORRADOR' ? 'REVISION' : selectedList.status,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudieron guardar los criterios.');
+      setProspeoForm((current) => ({
+        ...current,
+        jobTitles: criteriaForm.targetRole || current.jobTitles,
+        locations: criteriaForm.country || current.locations,
+        industries: criteriaForm.sector || current.industries,
+        confirmSpend: false,
+      }));
+      setMessage('Criterios guardados. La búsqueda real sigue bloqueada hasta que autorices Prospeo.');
+      await loadLists();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setSavingCriteria(false);
     }
   }
 
@@ -948,6 +1052,115 @@ export default function AiProspectingPage() {
                 {importing ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
                 {importing ? 'Importando...' : 'Importar a la lista'}
               </button>
+            </form>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Criterios de campaña</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedList ? selectedList.name : 'Selecciona una lista para preparar la búsqueda.'}
+                </p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${criteriaReadiness.readyCount === criteriaReadiness.total ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                {criteriaReadiness.readyCount}/{criteriaReadiness.total} listos
+              </span>
+            </div>
+            <form onSubmit={saveCampaignCriteria} className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Field label="Sector objetivo">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.sector}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, sector: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Industria, hoteles, clínicas..."
+                />
+              </Field>
+              <Field label="Ubicación">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.country}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, country: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Alicante, Valencia, Colombia..."
+                />
+              </Field>
+              <Field label="Cargo objetivo">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.targetRole}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, targetRole: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Gerente, operaciones, mantenimiento..."
+                />
+              </Field>
+              <Field label="Tamaño de empresa">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.companySize}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, companySize: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="11-50, 50-200, 200+..."
+                />
+              </Field>
+              <Field label="Dolor principal">
+                <textarea
+                  disabled={!selectedListId}
+                  value={criteriaForm.pain}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, pain: event.target.value })}
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Qué problema queremos detectar o resolver"
+                />
+              </Field>
+              <Field label="Oferta / gancho">
+                <textarea
+                  disabled={!selectedListId}
+                  value={criteriaForm.offer}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, offer: event.target.value })}
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Diagnóstico, auditoría, demo, propuesta..."
+                />
+              </Field>
+              <Field label="Excluir">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.excludedSectors}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, excludedSectors: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Freelancers, empresas sin web, sectores no deseados..."
+                />
+              </Field>
+              <Field label="Notas de búsqueda">
+                <input
+                  disabled={!selectedListId}
+                  value={criteriaForm.searchNotes}
+                  onChange={(event) => setCriteriaForm({ ...criteriaForm, searchNotes: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                  placeholder="Prioridades o señales a revisar antes de importar"
+                />
+              </Field>
+              <div className="lg:col-span-2">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {criteriaReadiness.items.map((item) => (
+                    <span key={item.label} className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  disabled={!selectedListId || savingCriteria}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingCriteria ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
+                  {savingCriteria ? 'Guardando...' : 'Guardar criterios'}
+                </button>
+              </div>
             </form>
           </section>
 
@@ -1732,6 +1945,11 @@ function splitCsvLine(line: string) {
 
   cells.push(current.trim());
   return cells;
+}
+
+function readIcpString(icp: Record<string, string> | null | undefined, key: string) {
+  const value = icp?.[key];
+  return typeof value === 'string' ? value : '';
 }
 
 function normalizeHeader(value: string) {
