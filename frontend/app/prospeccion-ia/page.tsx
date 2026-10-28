@@ -965,6 +965,14 @@ export default function AiProspectingPage() {
     }
   }
 
+  async function logoutProspecting() {
+    try {
+      await fetch('/api/prospecting/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } finally {
+      window.location.replace('/prospeccion-login');
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -981,6 +989,12 @@ export default function AiProspectingPage() {
         >
           <RefreshCw size={17} />
           Actualizar
+        </button>
+        <button
+          onClick={logoutProspecting}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+        >
+          Salir
         </button>
       </div>
 

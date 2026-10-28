@@ -10,7 +10,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.davofrio-crm-api-ia.rule=Host(`crm.iadavofrio.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.davofrio-crm-api-ia.rule=(Host(`crm.iadavofrio.com`) || Host(`crm.davofrio.com`)) && PathPrefix(`/api`)"
       - "traefik.http.routers.davofrio-crm-api-ia.priority=100"
       - "traefik.http.routers.davofrio-crm-api-ia.entrypoints=websecure"
       - "traefik.http.routers.davofrio-crm-api-ia.tls.certresolver=letsencrypt"
@@ -29,7 +29,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.davofrio-crm-web-ia.rule=Host(`crm.iadavofrio.com`)"
+      - "traefik.http.routers.davofrio-crm-web-ia.rule=Host(`crm.iadavofrio.com`) || Host(`crm.davofrio.com`)"
       - "traefik.http.routers.davofrio-crm-web-ia.priority=10"
       - "traefik.http.routers.davofrio-crm-web-ia.entrypoints=websecure"
       - "traefik.http.routers.davofrio-crm-web-ia.tls.certresolver=letsencrypt"

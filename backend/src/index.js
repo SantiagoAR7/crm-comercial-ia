@@ -11,7 +11,8 @@ import { settingsRouter } from './routes/settings.js';
 import { authRouter } from './routes/auth.js';
 import { biAuthRouter } from './routes/bi-auth.js';
 import { biRouter } from './routes/bi.js';
-import { requireAuth, requireBiAuth } from './services/auth.js';
+import { prospectingAuthRouter } from './routes/prospecting-auth.js';
+import { requireAuth, requireBiAuth, requireProspectingAuth } from './services/auth.js';
 import { startProspectingEmailWorker } from './services/prospecting-email.js';
 
 const app = express();
@@ -39,6 +40,8 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/bi/auth', biAuthRouter);
 app.use('/api/bi', requireBiAuth, biRouter);
+app.use('/api/prospecting/auth', prospectingAuthRouter);
+app.use('/api/prospecting', requireProspectingAuth, prospectingRouter);
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/campaigns/webhooks/')) return next();
   return requireAuth(req, res, next);
@@ -49,7 +52,6 @@ app.use('/api/installations', installationsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/commercial-ai', commercialAiRouter);
-app.use('/api/prospecting', prospectingRouter);
 app.use('/api/settings', settingsRouter);
 
 app.use((err, _req, res, _next) => {

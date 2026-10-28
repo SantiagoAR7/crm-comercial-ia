@@ -6,6 +6,7 @@ import {
 
 export const sessionCookieName = 'crm_session';
 export const biSessionCookieName = 'bi_session';
+export const prospectingSessionCookieName = 'prospecting_session';
 const sessionDurationSeconds = 8 * 60 * 60;
 
 function parseCookies(header = '') {
@@ -67,7 +68,11 @@ export function getSession(req, cookieName = sessionCookieName, expectedAccess =
 }
 
 export function verifyCredentials(email, password, profile = 'crm') {
-  const prefix = profile === 'bi' ? 'BI_ACCESS' : 'CRM_ADMIN';
+  const prefix = profile === 'bi'
+    ? 'BI_ACCESS'
+    : profile === 'prospecting'
+      ? 'PROSPECTING_ACCESS'
+      : 'CRM_ADMIN';
   const configuredLogin = String(
     process.env[`${prefix}_USERNAME`] ||
     process.env[`${prefix}_EMAIL`] ||
@@ -109,5 +114,12 @@ export function requireBiAuth(req, res, next) {
   const session = getSession(req, biSessionCookieName, 'bi');
   if (!session) return res.status(401).json({ error: 'Autenticación BI requerida.' });
   req.biUser = session;
+  return next();
+}
+
+export function requireProspectingAuth(req, res, next) {
+  const session = getSession(req, prospectingSessionCookieName, 'prospecting');
+  if (!session) return res.status(401).json({ error: 'Autenticación de prospección requerida.' });
+  req.prospectingUser = session;
   return next();
 }

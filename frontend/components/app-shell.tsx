@@ -12,14 +12,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState('');
 
   useEffect(() => {
-    if (pathname === '/login') return;
+    if (pathname === '/login' || pathname === '/prospeccion-login' || pathname.startsWith('/prospeccion')) return;
     fetch('/api/auth/session', { credentials: 'same-origin' })
       .then((response) => response.ok ? response.json() : null)
       .then((body) => setEmail(body?.data?.email || ''))
       .catch(() => undefined);
   }, [pathname]);
 
-  if (pathname === '/login' || pathname === '/bi-login' || pathname.startsWith('/bi')) {
+  if (pathname === '/login' || pathname === '/bi-login' || pathname.startsWith('/bi') || pathname === '/prospeccion-login' || pathname.startsWith('/prospeccion')) {
     return <main className="min-h-screen">{children}</main>;
   }
 

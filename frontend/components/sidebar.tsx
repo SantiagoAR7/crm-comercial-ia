@@ -4,14 +4,13 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Bot, Building2, LayoutDashboard, Megaphone, Search, Settings, Target, LogOut, X } from 'lucide-react';
+import { Bot, Building2, LayoutDashboard, Megaphone, Settings, Target, LogOut, X } from 'lucide-react';
 
 const items = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/instalaciones', label: 'Instalaciones', icon: Building2 },
   { href: '/campanas', label: 'Campañas', icon: Megaphone },
   { href: '/ia-comercial', label: 'IA Comercial', icon: Bot },
-  { href: '/prospeccion-ia', label: 'Prospección IA', icon: Search },
   { href: '/oportunidades', label: 'Oportunidades', icon: Target },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
