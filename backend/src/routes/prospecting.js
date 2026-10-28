@@ -60,6 +60,22 @@ function isUsableEmail(value) {
   return Boolean(email && !email.includes('*') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
 }
 
+function isUsablePhone(value) {
+  const phone = normalizeText(value);
+  const digits = phone.replace(/\D/g, '');
+  return Boolean(phone && !phone.includes('*') && digits.length >= 7);
+}
+
+function readNoteValue(notes, key) {
+  const prefix = `${key}:`;
+  return normalizeText(notes)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith(prefix))
+    ?.slice(prefix.length)
+    .trim() || '';
+}
+
 function websiteKey(value) {
   const cleanWebsite = normalizeWebsite(value);
   if (!cleanWebsite) return '';
@@ -285,6 +301,55 @@ function normalizeProspeoProspect(item, list) {
       prospeoCompanyId ? `prospeo_company_id:${prospeoCompanyId}` : '',
     ].filter(Boolean).join('\n') || null,
   };
+}
+
+function buildProspeoEnrichPayload(prospect, options = {}) {
+  const personId = readNoteValue(prospect.notes, 'prospeo_person_id');
+  const data = {};
+  if (personId) data.person_id = personId;
+  if (prospect.contact_name) data.full_name = prospect.contact_name;
+  if (prospect.linkedin_url) data.linkedin_url = prospect.linkedin_url;
+  if (prospect.company_name) data.company_name = prospect.company_name;
+  if (prospect.website) data.company_website = websiteKey(prospect.website);
+
+  return {
+    only_verified_email: options.onlyVerifiedEmail !== false,
+    enrich_mobile: options.enrichMobile === true || options.onlyVerifiedMobile === true,
+    only_verified_mobile: options.onlyVerifiedMobile === true,
+    data,
+  };
+}
+
+function normalizeProspeoEnrichment(body, prospect) {
+  const person = body?.person || {};
+  const company = body?.company || {};
+  const location = person.location || company.location || {};
+  const emailValue = person.email?.email || '';
+  const mobileValue = person.mobile?.mobile || person.mobile?.mobile_international || person.mobile?.mobile_national || '';
+  const cleanEmail = isUsableEmail(emailValue) ? normalizeText(emailValue).toLowerCase() : '';
+  const cleanPhone = isUsablePhone(mobileValue) ? normalizeText(mobileValue) : '';
+  const nextNotes = [
+    normalizeText(prospect.notes),
+    body?.free_enrichment === true ? 'prospeo_enrichment:free' : 'prospeo_enrichment:charged',
+    person.email?.status ? `prospeo_email_status:${person.email.status}` : '',
+    person.mobile?.status ? `prospeo_mobile_status:${person.mobile.status}` : '',
+  ].filter(Boolean).join('\n');
+
+  const updates = {
+    contact_name: normalizeText(person.full_name) || prospect.contact_name || null,
+    contact_role: normalizeText(person.current_job_title || person.headline) || prospect.contact_role || null,
+    linkedin_url: normalizeText(person.linkedin_url) || prospect.linkedin_url || null,
+    website: normalizeWebsite(company.website || company.domain) || prospect.website || null,
+    country: normalizeText(location.country || company.location?.country) || prospect.country || null,
+    city: normalizeText(location.city || company.location?.city) || prospect.city || null,
+    sector: normalizeText(company.industry) || prospect.sector || null,
+    company_size: normalizeText(company.employee_range || company.headcount_range || company.employee_count_range) || prospect.company_size || null,
+    notes: nextNotes,
+  };
+
+  if (cleanEmail) updates.email = cleanEmail;
+  if (cleanPhone) updates.phone = cleanPhone;
+  return { updates, email: cleanEmail, phone: cleanPhone };
 }
 
 function scoreProspect(prospect) {
@@ -1055,6 +1120,167 @@ prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
     usage: await prospeoUsageSummary(),
     free: prospeoBody?.free === true,
     filters: payload.filters,
+  });
+});
+
+prospectingRouter.post('/lists/:id/prospeo/enrich', async (req, res) => {
+  const { data: list, error: listError } = await loadList(req.params.id);
+  if (listError) return res.status(404).json({ error: 'No se encontro la lista.' });
+
+  const confirmSpend = req.body?.confirmSpend === true;
+  if (!confirmSpend) {
+    return res.status(400).json({
+      error: 'Confirma el uso de enriquecimiento de Prospeo antes de continuar.',
+      detail: 'El enriquecimiento puede consumir creditos si Prospeo encuentra email o movil real.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  const enrichMobile = req.body?.enrichMobile === true;
+  const onlyVerifiedMobile = req.body?.onlyVerifiedMobile === true;
+  const limit = Math.min(25, Math.max(1, Number(req.body?.limit || 10)));
+  const maxChargePerHit = enrichMobile || onlyVerifiedMobile ? 10 : 1;
+
+  try {
+    await checkProspeoUsageAvailable('enrich', maxChargePerHit);
+  } catch (error) {
+    return res.status(429).json({
+      error: error instanceof Error ? error.message : 'Limite diario de enriquecimiento de Prospeo alcanzado.',
+      usage: await prospeoUsageSummary(),
+    });
+  }
+
+  const { data: prospects, error: prospectsError } = await supabase
+    .from('prospects')
+    .select('id, list_id, company_name, website, linkedin_url, contact_name, contact_role, email, phone, country, city, sector, company_size, source, status, notes')
+    .eq('list_id', list.id)
+    .eq('source', 'PROSPEO')
+    .order('created_at', { ascending: true })
+    .limit(250);
+
+  if (prospectsError) {
+    return res.status(500).json({ error: 'No se pudieron cargar prospectos para enriquecer.', detail: prospectsError.message });
+  }
+
+  const candidates = (prospects || [])
+    .filter((prospect) => readNoteValue(prospect.notes, 'prospeo_person_id'))
+    .filter((prospect) => !isUsableEmail(prospect.email) || ((enrichMobile || onlyVerifiedMobile) && !isUsablePhone(prospect.phone)))
+    .slice(0, limit);
+
+  const results = [];
+  let enriched = 0;
+  let charged = 0;
+  let emailsFound = 0;
+  let phonesFound = 0;
+
+  for (const prospect of candidates) {
+    try {
+      await checkProspeoUsageAvailable('enrich', maxChargePerHit);
+    } catch (error) {
+      results.push({
+        prospectId: prospect.id,
+        companyName: prospect.company_name,
+        status: 'LIMIT_REACHED',
+        detail: error instanceof Error ? error.message : 'Limite alcanzado.',
+      });
+      break;
+    }
+
+    const payload = buildProspeoEnrichPayload(prospect, {
+      enrichMobile,
+      onlyVerifiedEmail: req.body?.onlyVerifiedEmail !== false,
+      onlyVerifiedMobile,
+    });
+
+    let prospeoBody;
+    try {
+      prospeoBody = await callProspeo('enrich-person', payload);
+    } catch (error) {
+      results.push({
+        prospectId: prospect.id,
+        companyName: prospect.company_name,
+        status: 'NO_MATCH',
+        detail: error instanceof Error ? error.message : 'Sin coincidencia.',
+      });
+      continue;
+    }
+
+    const { updates, email, phone } = normalizeProspeoEnrichment(prospeoBody, prospect);
+    const charge = prospeoBody?.free_enrichment === true
+      ? 0
+      : phone && (enrichMobile || onlyVerifiedMobile) ? 10 : email ? 1 : 0;
+
+    if (charge > 0) {
+      try {
+        await reserveProspeoUsage('enrich', charge);
+        charged += charge;
+      } catch (error) {
+        results.push({
+          prospectId: prospect.id,
+          companyName: prospect.company_name,
+          status: 'LIMIT_REACHED',
+          detail: error instanceof Error ? error.message : 'Limite alcanzado.',
+        });
+        break;
+      }
+    }
+
+    const { data: updatedProspect, error: updateError } = await supabase
+      .from('prospects')
+      .update(updates)
+      .eq('id', prospect.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      results.push({
+        prospectId: prospect.id,
+        companyName: prospect.company_name,
+        status: 'UPDATE_ERROR',
+        detail: updateError.message,
+      });
+      continue;
+    }
+
+    await supabase.from('prospect_activities').insert({
+      prospect_id: prospect.id,
+      type: 'INVESTIGACION',
+      description: email || phone ? 'Contacto enriquecido con Prospeo.' : 'Prospeo no devolvio contacto revelado.',
+      metadata: {
+        provider: 'PROSPEO',
+        action: 'enrich-person',
+        freeEnrichment: prospeoBody?.free_enrichment === true,
+        charged,
+        emailFound: Boolean(email),
+        phoneFound: Boolean(phone),
+        emailStatus: prospeoBody?.person?.email?.status || null,
+        mobileStatus: prospeoBody?.person?.mobile?.status || null,
+      },
+    });
+
+    if (email) emailsFound += 1;
+    if (phone) phonesFound += 1;
+    enriched += 1;
+    results.push({
+      prospectId: prospect.id,
+      companyName: updatedProspect.company_name,
+      status: email || phone ? 'ENRICHED' : 'NO_CONTACT_REVEALED',
+      email: updatedProspect.email,
+      phone: updatedProspect.phone,
+      free: prospeoBody?.free_enrichment === true,
+    });
+  }
+
+  await supabase.rpc('refresh_prospecting_list_counters', { p_list_id: list.id });
+
+  return res.json({
+    enriched,
+    attempted: candidates.length,
+    charged,
+    emailsFound,
+    phonesFound,
+    usage: await prospeoUsageSummary(),
+    results,
   });
 });
 
