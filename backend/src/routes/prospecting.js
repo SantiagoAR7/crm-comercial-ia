@@ -19,6 +19,25 @@ const prospectingDailyEmailLimit = Math.max(0, Number(process.env.PROSPECTING_EM
 const prospectingFollowupDelayDays = Math.max(1, Number(process.env.PROSPECTING_FOLLOWUP_DELAY_DAYS || 3));
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const prospeoUsagePath = path.join(dataDir, 'prospeo-usage.json');
+const plasticProspectingIndustries = ['Plastics Manufacturing', 'Plastics and Rubber Product Manufacturing'];
+const plasticProspectingLocations = [
+  'Ibi, Spain',
+  'Alcoy, Spain',
+  'Castalla, Spain',
+  'Onil, Spain',
+  'Tibi, Spain',
+  'Cocentaina, Spain',
+  'Muro del Alcoy, Spain',
+  'Bañeres, Spain',
+];
+const plasticProspectingKeywords = [
+  'inyección de plásticos',
+  'transformación de plásticos',
+  'moldes',
+  'termoplásticos',
+  'inyectados plásticos',
+  'plastic injection molding',
+];
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -78,6 +97,67 @@ function readNoteValue(notes, key) {
     .find((line) => line.startsWith(prefix))
     ?.slice(prefix.length)
     .trim() || '';
+}
+
+function isPlasticProspectingList(list) {
+  const haystack = [
+    list?.name,
+    list?.description,
+    list?.icp?.sector,
+    list?.icp?.searchNotes,
+  ].map(normalizeText).join(' ').toLowerCase();
+  return /pl[aá]stic|plastic|inyecci[oó]n/.test(haystack);
+}
+
+function lockPlasticProspeoFilters(payload) {
+  const filters = payload.filters || {};
+  filters.company_industry = { include: plasticProspectingIndustries };
+  filters.company_location_search = { include: plasticProspectingLocations };
+  filters.company_keywords = {
+    include: plasticProspectingKeywords,
+    include_all: false,
+    search_everywhere: true,
+  };
+  filters.max_person_per_company = Math.min(2, Math.max(1, Number(filters.max_person_per_company || 2)));
+  payload.filters = filters;
+  return payload;
+}
+
+function validateProspeoSearchPayload(payload, list) {
+  const filters = payload.filters || {};
+  const industries = Array.isArray(filters.company_industry?.include) ? filters.company_industry.include : [];
+  const locations = Array.isArray(filters.company_location_search?.include) ? filters.company_location_search.include : [];
+
+  if (!industries.length) {
+    return 'La busqueda debe llevar industria obligatoria para evitar resultados demasiado amplios.';
+  }
+
+  if (isPlasticProspectingList(list)) {
+    const validIndustry = industries.some((industry) => plasticProspectingIndustries.includes(industry));
+    if (!validIndustry) {
+      return `Para esta campaña usa industria exacta: ${plasticProspectingIndustries.join(', ')}.`;
+    }
+    if (locations.some((location) => /greater alicante|alicante area|comunidad valenciana/i.test(location))) {
+      return 'La ubicacion esta demasiado amplia. Usa ciudades exactas: Ibi, Alcoy, Castalla, Onil, Tibi, Cocentaina, Muro del Alcoy y Bañeres.';
+    }
+  }
+
+  return '';
+}
+
+function prepareProspeoSearchPayload(list, body = {}) {
+  const payload = buildProspeoSearchPayload({
+    ...body,
+    sector: body?.filters ? body?.sector : body?.sector || list.icp?.sector,
+    country: body?.filters ? body?.country : body?.country || list.icp?.country,
+    targetRole: body?.filters ? body?.targetRole : body?.targetRole || list.icp?.targetRole,
+  });
+
+  if (isPlasticProspectingList(list)) {
+    lockPlasticProspeoFilters(payload);
+  }
+
+  return payload;
 }
 
 function websiteKey(value) {
@@ -816,6 +896,23 @@ prospectingRouter.get('/email/status', async (_req, res) => {
   }
 });
 
+prospectingRouter.post('/lists/:id/prospeo/search-preview', async (req, res) => {
+  const { data: list, error: listError } = await loadList(req.params.id);
+  if (listError) return res.status(404).json({ error: 'No se encontro la lista.' });
+
+  const payload = prepareProspeoSearchPayload(list, req.body || {});
+  const validationError = validateProspeoSearchPayload(payload, list);
+
+  return res.json({
+    data: {
+      valid: !validationError,
+      error: validationError || null,
+      payload,
+      usage: await prospeoUsageSummary(),
+    },
+  });
+});
+
 prospectingRouter.post('/email/poll-now', async (_req, res) => {
   try {
     const data = await pollProspectingInbox();
@@ -1007,15 +1104,19 @@ prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
     });
   }
 
-  const payload = buildProspeoSearchPayload({
-    ...req.body,
-    sector: req.body?.filters ? req.body?.sector : req.body?.sector || list.icp?.sector,
-    country: req.body?.filters ? req.body?.country : req.body?.country || list.icp?.country,
-    targetRole: req.body?.filters ? req.body?.targetRole : req.body?.targetRole || list.icp?.targetRole,
-  });
+  const payload = prepareProspeoSearchPayload(list, req.body || {});
 
   if (!Object.keys(payload.filters || {}).length) {
     return res.status(400).json({ error: 'Define al menos un filtro para buscar en Prospeo.' });
+  }
+
+  const validationError = validateProspeoSearchPayload(payload, list);
+  if (validationError) {
+    return res.status(400).json({
+      error: validationError,
+      filters: payload.filters,
+      usage: await prospeoUsageSummary(),
+    });
   }
 
   try {
