@@ -33,6 +33,10 @@ function todayStartIso() {
   return `${day}T00:00:00.000Z`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function splitTerms(value, limit = 20) {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeText(item)).filter(Boolean).slice(0, limit);
@@ -289,7 +293,7 @@ function normalizeProspeoProspect(item, list) {
     contact_name: fullName || null,
     contact_role: normalizeText(person.job_title || person.title || person.headline) || null,
     email: isUsableEmail(cleanEmail) ? cleanEmail : null,
-    phone: normalizeText(typeof mobileValue === 'string' ? mobileValue : '') || null,
+    phone: isUsablePhone(mobileValue) ? normalizeText(mobileValue) : null,
     country,
     city,
     sector: normalizeText(sector) || null,
@@ -1193,14 +1197,26 @@ prospectingRouter.post('/lists/:id/prospeo/enrich', async (req, res) => {
     });
 
     let prospeoBody;
-    try {
-      prospeoBody = await callProspeo('enrich-person', payload);
-    } catch (error) {
+    let enrichError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        prospeoBody = await callProspeo('enrich-person', payload);
+        enrichError = null;
+        break;
+      } catch (error) {
+        enrichError = error;
+        const detail = error instanceof Error ? error.message : '';
+        if (!/rate limit/i.test(detail) || attempt === 2) break;
+        await sleep(2500);
+      }
+    }
+
+    if (!prospeoBody) {
       results.push({
         prospectId: prospect.id,
         companyName: prospect.company_name,
-        status: 'NO_MATCH',
-        detail: error instanceof Error ? error.message : 'Sin coincidencia.',
+        status: /rate limit/i.test(enrichError instanceof Error ? enrichError.message : '') ? 'RATE_LIMITED' : 'NO_MATCH',
+        detail: enrichError instanceof Error ? enrichError.message : 'Sin coincidencia.',
       });
       continue;
     }
