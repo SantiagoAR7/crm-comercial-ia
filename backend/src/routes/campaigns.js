@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../services/supabase.js';
 import { readSettings } from '../services/settings-store.js';
+import { isCampaignClientExcluded } from '../services/campaign-exclusions.js';
 
 export const campaignsRouter = Router();
 
@@ -95,7 +96,7 @@ async function fetchAllCandidateRows({
     }
 
     const page = data || [];
-    rows.push(...page);
+    rows.push(...page.filter((row) => !isCampaignClientExcluded(row)));
 
     if (page.length < pageSize) {
       break;
@@ -142,7 +143,7 @@ async function fetchAllCampaignContactsForRun(campaignId, pageSize = 1000) {
     }
 
     const page = data || [];
-    rows.push(...page);
+    rows.push(...page.filter((row) => !isCampaignClientExcluded(row)));
 
     if (page.length < pageSize) {
       break;
@@ -438,11 +439,13 @@ campaignsRouter.post('/from-warranty-selection', async (req, res) => {
     .select('id,id_activo,id_cliente,customer_name,contact_name,normalized_phone,normalized_email,population,province,brand,model,source_snapshot')
     .in('id', selectedIds)
     .contains('source_snapshot', { warranty_status: 'EN_GARANTIA' })
-    .eq('active', true);
+    .eq('active', true)
+    .eq('excluded_from_campaigns', false);
 
   if (contactsError) return res.status(500).json({ error: 'No se pudo validar la selección.', detail: contactsError.message });
-  if (!contacts?.length || contacts.length !== selectedIds.length) {
-    return res.status(400).json({ error: 'La selección contiene usuarios no válidos o que no están en garantía.' });
+  const eligibleContacts = (contacts || []).filter((contact) => !isCampaignClientExcluded(contact));
+  if (!eligibleContacts.length || eligibleContacts.length !== selectedIds.length) {
+    return res.status(400).json({ error: 'La selección contiene usuarios no válidos, excluidos o que no están en garantía.' });
   }
 
   const { data: campaign, error: campaignError } = await supabase
@@ -450,7 +453,7 @@ campaignsRouter.post('/from-warranty-selection', async (req, res) => {
     .insert({
       name: String(name).trim(), type, start_date: startDate, end_date: endDate,
       vapi_agent_id: retellCampaignAgentId, active: true, status: 'REVISION',
-      candidate_count: contacts.length,
+      candidate_count: eligibleContacts.length,
       filters: { source: 'GARANTIA_SELECCION_MANUAL', installationIds: selectedIds },
       notes: 'Usuarios en garantía añadidos únicamente mediante selección manual.',
     })
@@ -460,7 +463,7 @@ campaignsRouter.post('/from-warranty-selection', async (req, res) => {
   if (campaignError) return res.status(500).json({ error: 'No se pudo crear la campaña.', detail: campaignError.message });
 
   const now = new Date().toISOString();
-  const rows = contacts.map((contact) => ({
+  const rows = eligibleContacts.map((contact) => ({
     campaign_id: campaign.id, contact_id: contact.id, id_activo: contact.id_activo,
     id_cliente: contact.id_cliente, customer_name: contact.customer_name,
     contact_name: contact.contact_name, normalized_phone: contact.normalized_phone,
