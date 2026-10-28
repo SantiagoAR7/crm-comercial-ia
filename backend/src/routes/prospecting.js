@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { supabase } from '../services/supabase.js';
-import { emailStatus, pollProspectingInbox, sendProspectingEmail } from '../services/prospecting-email.js';
+import { cleanReplyBody, emailStatus, pollProspectingInbox, sendProspectingEmail } from '../services/prospecting-email.js';
 
 export const prospectingRouter = Router();
 
@@ -490,7 +490,9 @@ function activityOutcome(activity) {
 
 function activityBody(activity) {
   const metadata = activity?.metadata || {};
-  return normalizeText(metadata.responseText || metadata.body || metadata.notes || '');
+  const body = normalizeText(metadata.responseText || metadata.body || metadata.notes || '');
+  if (metadata.emailDirection === 'inbound') return cleanReplyBody(body);
+  return body;
 }
 
 async function loadList(listId) {

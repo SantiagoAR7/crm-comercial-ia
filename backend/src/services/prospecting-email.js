@@ -114,6 +114,49 @@ function stripHtml(value) {
     .trim();
 }
 
+export function cleanReplyBody(value) {
+  let text = String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+
+  const cutPatterns = [
+    /\n\s*On .+ wrote:\s*$/im,
+    /\n\s*El .+ escribió:\s*$/im,
+    /\n\s*Le .+ escribió:\s*$/im,
+    /\n\s*-{2,}\s*Mensaje original\s*-{2,}/im,
+    /\n\s*-{2,}\s*Original Message\s*-{2,}/im,
+    /\n\s*De:\s.+\n\s*Enviado el:/im,
+    /\n\s*From:\s.+\n\s*Sent:/im,
+    /\n\s*AVISO LEGAL:/im,
+    /\n\s*LEGAL NOTICE:/im,
+    /\n\s*CONFIDENTIALITY NOTICE:/im,
+  ];
+
+  let cutIndex = -1;
+  for (const pattern of cutPatterns) {
+    const match = pattern.exec(text);
+    if (match && (cutIndex === -1 || match.index < cutIndex)) cutIndex = match.index;
+  }
+  if (cutIndex >= 0) text = text.slice(0, cutIndex);
+
+  text = text
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('>'))
+    .join('\n')
+    .replace(/\n\s*--\s*\n[\s\S]*$/m, '')
+    .replace(/\n\s*(Enviado desde|Sent from my|Get Outlook for)/i, '\n')
+    .replace(/\n{3,}[\s\S]*$/m, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return (text || clean(value)).slice(0, 4000);
+}
+
 function buildMessage({ fromName, fromAddress, to, subject, body, messageId, prospectId, listId, trackingToken }) {
   const encodedSubject = escapeHeader(subject);
   const headers = [
@@ -526,6 +569,8 @@ async function recordInboundEmail({ uid, providerMessageId, email, trackingToken
   const metadata = outbound.metadata || {};
   const prospectId = outbound.prospect_id;
   const messageId = typeof metadata.messageId === 'string' ? metadata.messageId : null;
+  const rawBody = email.body.slice(0, 12000);
+  const replyBody = cleanReplyBody(rawBody);
 
   await supabase.from('prospect_activities').insert({
     prospect_id: prospectId,
@@ -538,7 +583,8 @@ async function recordInboundEmail({ uid, providerMessageId, email, trackingToken
       providerMessageId,
       from: email.from,
       subject: email.subject,
-      body: email.body.slice(0, 12000),
+      body: replyBody,
+      rawBody,
       trackingToken,
       outreachStatus: 'RESPONDIDO',
       matchedOutboundActivityId: outbound.id,
