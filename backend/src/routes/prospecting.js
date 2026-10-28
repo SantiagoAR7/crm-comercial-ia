@@ -934,9 +934,9 @@ prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
 
   const payload = buildProspeoSearchPayload({
     ...req.body,
-    sector: req.body?.sector || list.icp?.sector,
-    country: req.body?.country || list.icp?.country,
-    targetRole: req.body?.targetRole || list.icp?.targetRole,
+    sector: req.body?.filters ? req.body?.sector : req.body?.sector || list.icp?.sector,
+    country: req.body?.filters ? req.body?.country : req.body?.country || list.icp?.country,
+    targetRole: req.body?.filters ? req.body?.targetRole : req.body?.targetRole || list.icp?.targetRole,
   });
 
   if (!Object.keys(payload.filters || {}).length) {
