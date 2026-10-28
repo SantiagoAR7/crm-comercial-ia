@@ -133,12 +133,27 @@ async function reserveProspeoUsage(kind, count = 1) {
   return nextUsage;
 }
 
+async function checkProspeoUsageAvailable(kind, count = 1) {
+  const usage = await readProspeoUsage();
+  const field = kind === 'enrich' ? 'enrich' : 'search';
+  const limit = field === 'enrich' ? prospeoDailyEnrichLimit : prospeoDailySearchLimit;
+  const nextValue = Number(usage[field] || 0) + count;
+
+  if (nextValue > limit) {
+    const label = field === 'enrich' ? 'enriquecimientos' : 'busquedas';
+    throw new Error(`Limite diario de Prospeo alcanzado para ${label}: ${usage[field]}/${limit}.`);
+  }
+
+  return usage;
+}
+
 function buildProspeoSearchPayload(input = {}) {
   const filters = input.filters && typeof input.filters === 'object' ? input.filters : {};
   const jobTitles = splitTerms(input.jobTitles || input.job_titles || input.targetRole || input.target_role, 20);
   const locations = splitTerms(input.locations || input.location || input.country, 20);
   const industries = splitTerms(input.industries || input.industry || input.sector, 20);
-  const companyNames = splitTerms(input.companyKeywords || input.company_keywords, 20);
+  const companyKeywords = splitTerms(input.companyKeywords || input.company_keywords, 20);
+  const companyNames = splitTerms(input.companyNames || input.company_names, 20);
 
   if (jobTitles.length && !filters.person_job_title) {
     filters.person_job_title = {
@@ -147,12 +162,20 @@ function buildProspeoSearchPayload(input = {}) {
     };
   }
 
-  if (locations.length && !filters.person_location_search) {
-    filters.person_location_search = { include: locations };
+  if (locations.length && !filters.company_location_search) {
+    filters.company_location_search = { include: locations };
   }
 
   if (industries.length && !filters.company_industry) {
     filters.company_industry = { include: industries };
+  }
+
+  if (companyKeywords.length && !filters.company_keywords) {
+    filters.company_keywords = {
+      include: companyKeywords,
+      include_all: false,
+      search_everywhere: true,
+    };
   }
 
   if (companyNames.length && !filters.company) {
@@ -194,7 +217,7 @@ async function callProspeo(endpoint, payload) {
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.message || body.error || `Prospeo respondio HTTP ${response.status}`);
+    throw new Error(body.filter_error || body.message || body.error_code || body.error || `Prospeo respondio HTTP ${response.status}`);
   }
 
   return body;
@@ -921,7 +944,7 @@ prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
   }
 
   try {
-    await reserveProspeoUsage('search', 1);
+    await checkProspeoUsageAvailable('search', 1);
   } catch (error) {
     return res.status(429).json({
       error: error instanceof Error ? error.message : 'Limite diario de Prospeo alcanzado.',
@@ -941,6 +964,17 @@ prospectingRouter.post('/lists/:id/prospeo/search', async (req, res) => {
   }
 
   const items = extractProspeoItems(prospeoBody).slice(0, maxResults);
+  if (items.length && prospeoBody?.free !== true) {
+    try {
+      await reserveProspeoUsage('search', 1);
+    } catch (error) {
+      return res.status(429).json({
+        error: error instanceof Error ? error.message : 'Limite diario de Prospeo alcanzado.',
+        usage: await prospeoUsageSummary(),
+      });
+    }
+  }
+
   const normalizedRows = items
     .map((item) => normalizeProspeoProspect(item, list))
     .filter(Boolean);
