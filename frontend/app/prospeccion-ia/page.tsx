@@ -114,6 +114,12 @@ type EmailStatus = {
   smtpConfigured: boolean;
   imapConfigured: boolean;
   pollIntervalSeconds: number;
+  usage?: {
+    date: string;
+    sentToday: number;
+    dailyLimit: number;
+    remainingToday: number;
+  };
 };
 
 type CampaignSummary = {
@@ -131,6 +137,7 @@ type CampaignSummary = {
     pendingFollowUps: number;
   };
   inbox: InboxItem[];
+  followUps: FollowUpItem[];
 };
 
 type InboxItem = {
@@ -145,6 +152,18 @@ type InboxItem = {
   outcome: string;
   nextFollowUpAt: string;
   createdAt: string;
+};
+
+type FollowUpItem = {
+  id: string;
+  prospectId: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  outcome: string;
+  nextFollowUpAt: string;
+  overdue: boolean;
+  note: string;
 };
 
 type ProspeoForm = {
@@ -736,10 +755,11 @@ export default function AiProspectingPage() {
     setClassifyingActivityId(item.id);
     setMessage('');
     try {
+      const nextFollowUpAt = classification === 'MAS_TARDE' ? futureDateTimeLocal(7) : '';
       const response = await fetch(`${apiUrl}/api/prospecting/activities/${item.id}/outcome`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ classification }),
+        body: JSON.stringify({ classification, nextFollowUpAt }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo clasificar la respuesta.');
@@ -992,10 +1012,15 @@ export default function AiProspectingPage() {
                   ? 'Graph envío activo'
                   : `SMTP ${emailStatus?.smtpConfigured ? 'configurado' : 'sin clave'}`}
               </span>
-              <span className={`rounded-lg px-3 py-2 ${(emailStatus?.graphConfigured || emailStatus?.imapConfigured) && emailStatus?.pollEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+      <span className={`rounded-lg px-3 py-2 ${(emailStatus?.graphConfigured || emailStatus?.imapConfigured) && emailStatus?.pollEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                 Respuestas {(emailStatus?.graphConfigured || emailStatus?.imapConfigured) && emailStatus?.pollEnabled ? `cada ${emailStatus.pollIntervalSeconds}s` : 'pendientes'}
               </span>
             </div>
+            {emailStatus?.usage && (
+              <p className="mt-3 text-xs font-semibold text-slate-500">
+                Enviados hoy: {emailStatus.usage.sentToday}/{emailStatus.usage.dailyLimit} · restantes {emailStatus.usage.remainingToday}
+              </p>
+            )}
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1091,6 +1116,40 @@ export default function AiProspectingPage() {
                     <Reply className="mx-auto text-slate-400" size={20} />
                     <p className="mt-3 text-sm font-semibold text-slate-700">Sin respuestas registradas en esta lista</p>
                     <p className="mt-1 text-sm text-slate-500">Cuando alguien responda un email con token de Prospección IA aparecerá aquí.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-bold text-slate-950">Próximos seguimientos</h4>
+                <span className="text-xs font-semibold text-slate-500">{campaignSummary?.followUps?.length || 0} activos</span>
+              </div>
+              <div className="mt-3 space-y-3">
+                {(campaignSummary?.followUps || []).map((item) => (
+                  <article key={item.id} className={`rounded-lg border p-4 ${item.overdue ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <button type="button" onClick={() => setSelectedProspectId(item.prospectId)} className="text-left">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h5 className="font-bold text-slate-950">{item.companyName || 'Prospecto sin empresa'}</h5>
+                          <ContactBadge status={item.outcome || 'MAS_TARDE'} />
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {[item.contactName, item.contactEmail].filter(Boolean).join(' · ') || 'Sin contacto'} · {formatDate(item.nextFollowUpAt)}
+                        </p>
+                      </button>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.overdue ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>
+                        {item.overdue ? 'Vencido' : 'Programado'}
+                      </span>
+                    </div>
+                    {item.note && <p className="mt-2 text-sm text-slate-600">{item.note}</p>}
+                  </article>
+                ))}
+                {!campaignSummary?.followUps?.length && (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center">
+                    <p className="text-sm font-semibold text-slate-700">Sin seguimientos pendientes</p>
+                    <p className="mt-1 text-sm text-slate-500">Cuando marques una respuesta como “Más tarde” aparecerá aquí.</p>
                   </div>
                 )}
               </div>
@@ -1584,6 +1643,14 @@ function formatDate(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function futureDateTimeLocal(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  date.setHours(9, 0, 0, 0);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {

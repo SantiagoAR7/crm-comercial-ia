@@ -15,6 +15,7 @@ const openaiProspectingModel = process.env.OPENAI_PROSPECTING_MODEL || 'gpt-4.1-
 const prospeoApiKey = process.env.PROSPEO_API_KEY;
 const prospeoDailySearchLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_SEARCH_LIMIT || 50));
 const prospeoDailyEnrichLimit = Math.max(0, Number(process.env.PROSPEO_DAILY_ENRICH_LIMIT || 0));
+const prospectingDailyEmailLimit = Math.max(0, Number(process.env.PROSPECTING_EMAIL_DAILY_SEND_LIMIT || 50));
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const prospeoUsagePath = path.join(dataDir, 'prospeo-usage.json');
 
@@ -24,6 +25,11 @@ function normalizeText(value) {
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function todayStartIso() {
+  const day = todayKey();
+  return `${day}T00:00:00.000Z`;
 }
 
 function splitTerms(value, limit = 20) {
@@ -495,6 +501,37 @@ function activityBody(activity) {
   return body;
 }
 
+async function prospectingEmailUsageSummary() {
+  const { count, error } = await supabase
+    .from('prospect_activities')
+    .select('id', { count: 'exact', head: true })
+    .eq('type', 'MENSAJE')
+    .contains('metadata', { emailDirection: 'outbound' })
+    .gte('created_at', todayStartIso());
+
+  if (error) throw error;
+  const sentToday = count || 0;
+  return {
+    date: todayKey(),
+    sentToday,
+    dailyLimit: prospectingDailyEmailLimit,
+    remainingToday: Math.max(0, prospectingDailyEmailLimit - sentToday),
+  };
+}
+
+async function latestProspectOutcome(prospectId) {
+  const { data, error } = await supabase
+    .from('prospect_activities')
+    .select('metadata, created_at')
+    .eq('prospect_id', prospectId)
+    .not('metadata->>outreachStatus', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  return normalizeText(data?.[0]?.metadata?.outreachStatus).toUpperCase();
+}
+
 async function loadList(listId) {
   const { data, error } = await supabase
     .from('prospecting_lists')
@@ -523,7 +560,14 @@ prospectingRouter.get('/prospeo/usage', async (_req, res) => {
 });
 
 prospectingRouter.get('/email/status', async (_req, res) => {
-  return res.json({ data: emailStatus() });
+  try {
+    return res.json({ data: { ...emailStatus(), usage: await prospectingEmailUsageSummary() } });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'No se pudo obtener el estado de email.',
+      detail: error instanceof Error ? error.message : 'Error desconocido.',
+    });
+  }
 });
 
 prospectingRouter.post('/email/poll-now', async (_req, res) => {
@@ -567,7 +611,7 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
   };
 
   if (!prospectIds.length) {
-    return res.json({ data: { metrics, inbox: [], list } });
+    return res.json({ data: { metrics, inbox: [], followUps: [], list } });
   }
 
   const [{ data: messages, error: messagesError }, { data: activities, error: activitiesError }] = await Promise.all([
@@ -597,6 +641,7 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
   const latestFollowUpByProspect = new Map();
   const now = Date.now();
   const inbox = [];
+  const followUpMap = new Map();
 
   for (const activity of activities || []) {
     const metadata = activity.metadata || {};
@@ -607,6 +652,21 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
       if (Number.isFinite(timestamp)) {
         const current = latestFollowUpByProspect.get(activity.prospect_id);
         if (!current || timestamp > current) latestFollowUpByProspect.set(activity.prospect_id, timestamp);
+        const existing = followUpMap.get(activity.prospect_id);
+        if (!existing || timestamp < existing.timestamp) {
+          followUpMap.set(activity.prospect_id, {
+            id: activity.id,
+            prospectId: activity.prospect_id,
+            companyName: activity.prospects?.company_name || '',
+            contactName: activity.prospects?.contact_name || '',
+            contactEmail: activity.prospects?.email || metadata.contactEmail || metadata.from || '',
+            outcome,
+            nextFollowUpAt,
+            timestamp,
+            overdue: timestamp <= now,
+            note: metadata.notes || '',
+          });
+        }
       }
     }
 
@@ -637,7 +697,11 @@ prospectingRouter.get('/lists/:id/summary', async (req, res) => {
     .filter((timestamp) => timestamp <= now)
     .length;
 
-  return res.json({ data: { metrics, inbox: inbox.slice(0, 50), list } });
+  const followUps = Array.from(followUpMap.values())
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(0, 25);
+
+  return res.json({ data: { metrics, inbox: inbox.slice(0, 50), followUps, list } });
 });
 
 prospectingRouter.post('/lists', async (req, res) => {
@@ -1225,6 +1289,31 @@ prospectingRouter.post('/messages/:id/send-email', async (req, res) => {
 
   if (prospectError) {
     return res.status(404).json({ error: 'No se encontro el prospecto del mensaje.' });
+  }
+  if (prospect.status === 'DESCARTADO') {
+    return res.status(409).json({ error: 'Este prospecto esta descartado. No se envia email para evitar contactos no deseados.' });
+  }
+
+  let emailUsage;
+  try {
+    emailUsage = await prospectingEmailUsageSummary();
+  } catch (error) {
+    return res.status(500).json({ error: 'No se pudo validar el limite diario de emails.', detail: error instanceof Error ? error.message : 'Error desconocido.' });
+  }
+  if (emailUsage.remainingToday <= 0) {
+    return res.status(429).json({
+      error: `Limite diario de emails de prospeccion alcanzado: ${emailUsage.sentToday}/${emailUsage.dailyLimit}.`,
+      usage: emailUsage,
+    });
+  }
+
+  try {
+    const latestOutcome = await latestProspectOutcome(prospect.id);
+    if (latestOutcome === 'NO_CONTACTAR' || latestOutcome === 'NO_INTERESADO') {
+      return res.status(409).json({ error: `Este prospecto esta marcado como ${latestOutcome.replace(/_/g, ' ')}. No se envia email.` });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: 'No se pudo validar el historial del prospecto.', detail: error instanceof Error ? error.message : 'Error desconocido.' });
   }
 
   try {
