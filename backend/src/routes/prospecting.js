@@ -55,6 +55,11 @@ function normalizeComparable(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function isUsableEmail(value) {
+  const email = normalizeText(value).toLowerCase();
+  return Boolean(email && !email.includes('*') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
 function websiteKey(value) {
   const cleanWebsite = normalizeWebsite(value);
   if (!cleanWebsite) return '';
@@ -252,6 +257,7 @@ function normalizeProspeoProspect(item, list) {
   const country = normalizeText(location.country || company.country || person.country) || null;
   const fullName = normalizeText(person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' '));
   const emailValue = person.email?.email || person.email?.value || person.email || null;
+  const cleanEmail = normalizeText(typeof emailValue === 'string' ? emailValue : '').toLowerCase();
   const mobileValue = person.mobile?.mobile || person.mobile?.value || person.mobile || null;
   const companyWebsite = company.website || company.domain || person.company_website;
   const companySize = company.headcount_range || company.employee_count_range || company.size || null;
@@ -266,7 +272,7 @@ function normalizeProspeoProspect(item, list) {
     linkedin_url: normalizeText(person.linkedin_url || company.linkedin_url) || null,
     contact_name: fullName || null,
     contact_role: normalizeText(person.job_title || person.title || person.headline) || null,
-    email: normalizeText(typeof emailValue === 'string' ? emailValue : '').toLowerCase() || null,
+    email: isUsableEmail(cleanEmail) ? cleanEmail : null,
     phone: normalizeText(typeof mobileValue === 'string' ? mobileValue : '') || null,
     country,
     city,
@@ -1484,6 +1490,11 @@ prospectingRouter.post('/messages/:id/send-email', async (req, res) => {
     return res.status(409).json({ error: 'Este prospecto esta descartado. No se envia email para evitar contactos no deseados.' });
   }
 
+  const targetEmail = cleanTo || prospect.email;
+  if (!isUsableEmail(targetEmail)) {
+    return res.status(400).json({ error: 'Agrega un email real y verificado antes de enviar. Prospeo puede devolver emails enmascarados que no son enviables.' });
+  }
+
   let emailUsage;
   try {
     emailUsage = await prospectingEmailUsageSummary();
@@ -1512,7 +1523,7 @@ prospectingRouter.post('/messages/:id/send-email', async (req, res) => {
       message,
       subject: cleanSubject || message.subject,
       body: cleanBody || message.body,
-      to: cleanTo || prospect.email,
+      to: targetEmail,
     });
 
     const { data: updatedMessage, error: updateMessageError } = await supabase
@@ -1611,6 +1622,9 @@ prospectingRouter.post('/prospects/:id/outreach', async (req, res) => {
   }
   if (!cleanContactEmail && cleanChannel === 'EMAIL') {
     return res.status(400).json({ error: 'El email de contacto es obligatorio para canal EMAIL.' });
+  }
+  if (cleanContactEmail && !isUsableEmail(cleanContactEmail)) {
+    return res.status(400).json({ error: 'El email de contacto no es valido o esta enmascarado.' });
   }
   if (!cleanBody && !cleanNotes) {
     return res.status(400).json({ error: 'Incluye el mensaje enviado o una nota de seguimiento.' });
