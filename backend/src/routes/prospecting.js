@@ -1441,6 +1441,28 @@ prospectingRouter.patch('/lists/:id', async (req, res) => {
 });
 
 prospectingRouter.delete('/lists/:id', async (req, res) => {
+  const hardDelete = req.query?.hard === 'true';
+  const confirmed = req.query?.confirm === 'ELIMINAR';
+
+  if (hardDelete) {
+    if (!confirmed) {
+      return res.status(400).json({ error: 'Confirma la eliminacion definitiva con confirm=ELIMINAR.' });
+    }
+
+    const { data, error } = await supabase
+      .from('prospecting_lists')
+      .delete()
+      .eq('id', req.params.id)
+      .select('id, name')
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: 'No se pudo eliminar la lista.', detail: error.message });
+    }
+
+    return res.json({ data, deleted: true });
+  }
+
   const { data, error } = await supabase
     .from('prospecting_lists')
     .update({ status: 'ARCHIVADA' })

@@ -301,6 +301,7 @@ export default function AiProspectingPage() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const [archivingListId, setArchivingListId] = useState<string | null>(null);
+  const [deletingListId, setDeletingListId] = useState<string | null>(null);
   const [prospectFilter, setProspectFilter] = useState('TODOS');
   const [prospeoUsage, setProspeoUsage] = useState<ProspeoUsage | null>(null);
   const [prospeoForm, setProspeoForm] = useState<ProspeoForm>(emptyProspeoForm);
@@ -743,6 +744,36 @@ export default function AiProspectingPage() {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setArchivingListId(null);
+    }
+  }
+
+  async function deleteSelectedList() {
+    if (!selectedListId || !selectedList) return;
+    const firstConfirmed = window.confirm(`Eliminar definitivamente "${selectedList.name}"? Esto borra la lista, prospectos, mensajes e historial de esta campaña.`);
+    if (!firstConfirmed) return;
+
+    const typed = window.prompt('Escribe ELIMINAR para confirmar el borrado definitivo.');
+    if (typed !== 'ELIMINAR') {
+      setMessage('Eliminación cancelada.');
+      return;
+    }
+
+    setDeletingListId(selectedListId);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/lists/${selectedListId}?hard=true&confirm=ELIMINAR`, { method: 'DELETE' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo eliminar la lista.');
+      setSelectedListId('');
+      setProspects([]);
+      setSelectedProspectId('');
+      setCampaignSummary(null);
+      setMessage('Lista eliminada definitivamente.');
+      await loadLists();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setDeletingListId(null);
     }
   }
 
@@ -1506,11 +1537,19 @@ export default function AiProspectingPage() {
                   {loadingProspects && <Loader2 className="animate-spin text-slate-400" size={18} />}
                   <button
                     onClick={archiveSelectedList}
-                    disabled={!selectedListId || archivingListId === selectedListId}
+                    disabled={!selectedListId || archivingListId === selectedListId || deletingListId === selectedListId}
                     className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {archivingListId === selectedListId ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
                     Archivar
+                  </button>
+                  <button
+                    onClick={deleteSelectedList}
+                    disabled={!selectedListId || deletingListId === selectedListId || archivingListId === selectedListId}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deletingListId === selectedListId ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}
+                    Eliminar
                   </button>
                   <button
                     onClick={generatePendingProspects}
