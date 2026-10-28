@@ -289,6 +289,7 @@ export default function AiProspectingPage() {
   const [campaignSummary, setCampaignSummary] = useState<CampaignSummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [classifyingActivityId, setClassifyingActivityId] = useState<string | null>(null);
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [listForm, setListForm] = useState<ListForm>(emptyListForm);
   const [csvText, setCsvText] = useState('');
@@ -726,6 +727,19 @@ export default function AiProspectingPage() {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
     } finally {
       setSendingEmailId(null);
+    }
+  }
+
+  function prepareSequenceAction(item: SequenceAction) {
+    setProspectFilter('TODOS');
+    setSelectedProspectId(item.prospectId);
+    setHighlightMessageId(item.nextMessageId || null);
+    if (item.nextMessageId) {
+      setMessage('Mensaje seleccionado para revisión. Confirma el contenido y usa “Enviar email” cuando esté listo.');
+    } else if (item.type === 'MISSING_EMAIL') {
+      setMessage('Este prospecto necesita email antes de poder entrar en la secuencia.');
+    } else {
+      setMessage('Prospecto seleccionado para revisar la acción de secuencia.');
     }
   }
 
@@ -1231,13 +1245,24 @@ export default function AiProspectingPage() {
                           {[item.contactName, item.contactEmail].filter(Boolean).join(' · ') || 'Sin contacto'}
                         </p>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProspectId(item.prospectId)}
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        Revisar
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        {item.nextMessageId && (item.type === 'PENDING_FIRST_EMAIL' || item.type === 'READY_FOLLOW_UP') && (
+                          <button
+                            type="button"
+                            onClick={() => prepareSequenceAction(item)}
+                            className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                          >
+                            Preparar envío
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => prepareSequenceAction(item)}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Revisar
+                        </button>
+                      </div>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
                     {item.nextMessageSubject && (
@@ -1388,7 +1413,7 @@ export default function AiProspectingPage() {
 
                   <div className="space-y-3">
                     {(visibleProspect.prospect_messages || []).map((item) => (
-                      <article key={item.id} className="rounded-lg border border-slate-200 p-4">
+                      <article key={item.id} className={`rounded-lg border p-4 ${highlightMessageId === item.id ? 'border-blue-300 bg-blue-50/50 ring-2 ring-blue-100' : 'border-slate-200'}`}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold text-slate-500">{item.channel} · Paso {item.step}</span>
                           <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{item.status}</span>
