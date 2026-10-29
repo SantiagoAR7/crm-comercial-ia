@@ -4,6 +4,8 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 
+export const socialSessionCookieName = 'social_session';
+export const ticketsSessionCookieName = 'tickets_session';
 export const sessionCookieName = 'crm_session';
 export const biSessionCookieName = 'bi_session';
 export const prospectingSessionCookieName = 'prospecting_session';
@@ -23,9 +25,9 @@ function parseCookies(header = '') {
   );
 }
 
-function sign(value) {
-  const secret = process.env.CRM_SESSION_SECRET;
-  if (!secret) throw new Error('CRM_SESSION_SECRET no está configurado.');
+function sign(value, access = 'crm') {
+  const secret = access === 'social' ? process.env.SOCIAL_SESSION_SECRET : access === 'tickets' ? process.env.TICKETS_SESSION_SECRET : process.env.CRM_SESSION_SECRET;
+  if (!secret) throw new Error('El secreto de sesión no está configurado.');
   return createHmac('sha256', secret).update(value).digest('base64url');
 }
 
@@ -36,13 +38,13 @@ export function createSessionToken(email, access = 'crm') {
     exp: Math.floor(Date.now() / 1000) + sessionDurationSeconds,
   })).toString('base64url');
 
-  return `${payload}.${sign(payload)}`;
+  return `${payload}.${sign(payload, access)}`;
 }
 
-export function verifySessionToken(token) {
+export function verifySessionToken(token, expectedAccess = 'crm') {
   if (!token || !token.includes('.')) return null;
   const [payload, signature] = token.split('.', 2);
-  const expected = sign(payload);
+  const expected = sign(payload, expectedAccess);
   const receivedBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
 
@@ -62,13 +64,15 @@ export function verifySessionToken(token) {
 
 export function getSession(req, cookieName = sessionCookieName, expectedAccess = 'crm') {
   const cookies = parseCookies(req.headers.cookie);
-  const session = verifySessionToken(cookies[cookieName]);
+  const session = verifySessionToken(cookies[cookieName], expectedAccess);
   if (!session || session.access !== expectedAccess) return null;
   return session;
 }
 
 export function verifyCredentials(email, password, profile = 'crm') {
-  const prefix = profile === 'bi'
+  const prefix = profile === 'social' ? 'SOCIAL_ACCESS' : profile === 'tickets'
+    ? 'TICKETS_ACCESS'
+    : profile === 'bi'
     ? 'BI_ACCESS'
     : profile === 'prospecting'
       ? 'PROSPECTING_ACCESS'
@@ -121,5 +125,19 @@ export function requireProspectingAuth(req, res, next) {
   const session = getSession(req, prospectingSessionCookieName, 'prospecting');
   if (!session) return res.status(401).json({ error: 'Autenticación de prospección requerida.' });
   req.prospectingUser = session;
+  return next();
+}
+
+export function requireTicketsAuth(req, res, next) {
+  const session = getSession(req, ticketsSessionCookieName, 'tickets');
+  if (!session) return res.status(401).json({ error: 'Inicia sesión en Facturas y tickets.' });
+  req.ticketsUser = session;
+  return next();
+}
+
+export function requireSocialAuth(req, res, next) {
+  const session = getSession(req, socialSessionCookieName, 'social');
+  if (!session) return res.status(401).json({ error: 'Inicia sesión en Redes sociales.' });
+  req.socialUser = session;
   return next();
 }

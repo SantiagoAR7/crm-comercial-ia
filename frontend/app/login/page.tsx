@@ -24,7 +24,7 @@ export default function LoginPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'No se pudo iniciar sesión.');
-      window.location.replace('/');
+      window.location.replace('/crm');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión.');
     } finally {

@@ -24,6 +24,7 @@ export default function SocialPublicationsPage() {
       if (status) params.set('status', status);
       const response = await fetch(`${apiUrl}/api/social-publications?${params}`, { cache: 'no-store' });
       const body = await response.json();
+      if (response.status === 401) { window.location.replace('/redes/login'); return; }
       if (!response.ok) throw new Error(body.error || 'No se pudo cargar el historial.');
       setPayload(body);
     } catch (value) { setError(value instanceof Error ? value.message : 'No se pudo cargar el historial.'); }
@@ -36,7 +37,7 @@ export default function SocialPublicationsPage() {
   return <div className="space-y-7 p-5 sm:p-8">
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div><p className="text-sm font-semibold text-slate-500">Control de automatizaciones</p><h1 className="mt-1 text-3xl font-extrabold text-slate-950">Redes sociales</h1><p className="mt-2 max-w-3xl text-sm text-slate-500">Registro de cada ejecución y publicación. Se guarda el contenido y el tipo de recurso, nunca el archivo de imagen o vídeo.</p></div>
-      <button onClick={load} disabled={loading} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"><RefreshCw size={17} className={loading?'animate-spin':''}/>Actualizar registro</button>
+      <div className="flex flex-wrap items-center gap-3"><a href="/" className="text-sm font-semibold text-slate-500">Volver al CRM</a><button onClick={async()=>{await fetch('/api/social/auth/logout',{method:'POST'});window.location.replace('/redes/login');}} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700">Cerrar sesión</button><button onClick={load} disabled={loading} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"><RefreshCw size={17} className={loading?'animate-spin':''}/>Actualizar registro</button></div>
     </header>
 
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -56,7 +57,7 @@ export default function SocialPublicationsPage() {
 
     {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div>}
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {loading ? <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-slate-500"><Loader2 className="animate-spin" size={20}/>Cargando ejecuciones…</div> : payload.data.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><Share2 size={34} className="mb-3 text-slate-300"/><p className="font-bold text-slate-700">{hasFilters?'No hay resultados para estos filtros':'Todavía no hay publicaciones registradas'}</p><p className="mt-1 max-w-lg text-sm text-slate-500">Las próximas ejecuciones de los flujos sociales aparecerán aquí automáticamente, sin adjuntar los archivos multimedia.</p></div> : <div className="divide-y divide-slate-100">{payload.data.map(item=><PublicationRow key={item.id} item={item}/>)}</div>}
+      {loading ? <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-slate-500"><Loader2 className="animate-spin" size={20}/>Cargando ejecuciones…</div> : payload.data.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><Share2 size={34} className="mb-3 text-slate-300"/><p className="font-bold text-slate-700">{hasFilters?'No hay resultados para estos filtros':'Todavía no hay publicaciones registradas'}</p><p className="mt-1 max-w-lg text-sm text-slate-500">Aún no se han recibido registros de n8n.</p></div> : <div className="divide-y divide-slate-100">{payload.data.map(item=><PublicationRow key={item.id} item={item}/>)}</div>}
     </section>
   </div>;
 }

@@ -8,12 +8,15 @@ import { installationsRouter } from './routes/installations.js';
 import { commercialAiRouter } from './routes/commercial-ai.js';
 import { prospectingRouter } from './routes/prospecting.js';
 import { settingsRouter } from './routes/settings.js';
+import { ticketsAuthRouter } from './routes/tickets-auth.js';
 import { authRouter } from './routes/auth.js';
 import { biAuthRouter } from './routes/bi-auth.js';
 import { biRouter } from './routes/bi.js';
 import { prospectingAuthRouter } from './routes/prospecting-auth.js';
+import { socialAuthRouter } from './routes/social-auth.js';
 import { socialPublicationsRouter } from './routes/social-publications.js';
-import { requireAuth, requireBiAuth, requireProspectingAuth } from './services/auth.js';
+import { requireSocialAuth, requireAuth, requireBiAuth, requireProspectingAuth, requireTicketsAuth } from './services/auth.js';
+import { ticketsRouter, ticketIntegrationRouter } from './routes/tickets.js';
 import { startProspectingEmailWorker } from './services/prospecting-email.js';
 
 const app = express();
@@ -32,12 +35,17 @@ app.use(cors({
   },
 }));
 
+app.use('/api/ticket-integration', express.json({ limit: '12mb' }), ticketIntegrationRouter);
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'cliente-crm-backend' });
 });
 
+app.use('/api/tickets/auth', ticketsAuthRouter);
+app.use('/api/tickets', requireTicketsAuth, ticketsRouter);
+app.use('/api/social/auth', socialAuthRouter);
+app.use('/api/social-publications', (req, res, next) => req.path === '/webhook/n8n' ? next() : requireSocialAuth(req, res, next), socialPublicationsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/bi/auth', biAuthRouter);
 app.use('/api/bi', requireBiAuth, biRouter);
@@ -55,7 +63,7 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/commercial-ai', commercialAiRouter);
 app.use('/api/settings', settingsRouter);
-app.use('/api/social-publications', socialPublicationsRouter);
+
 
 app.use((err, _req, res, _next) => {
   console.error(err);

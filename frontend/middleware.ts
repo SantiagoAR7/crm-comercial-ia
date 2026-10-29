@@ -9,13 +9,34 @@ export function middleware(request: NextRequest) {
   const hasBiSession = Boolean(request.cookies.get(biCookieName)?.value);
   const hasProspectingSession = Boolean(request.cookies.get(prospectingCookieName)?.value);
   const isLogin = request.nextUrl.pathname === '/login';
+  const isPortal = request.nextUrl.pathname === '/';
   const isBiLogin = request.nextUrl.pathname === '/bi-login';
   const isBi = request.nextUrl.pathname === '/bi' || request.nextUrl.pathname.startsWith('/bi/');
   const isProspectingLogin = request.nextUrl.pathname === '/prospeccion-login';
   const isProspecting = request.nextUrl.pathname === '/prospeccion' || request.nextUrl.pathname.startsWith('/prospeccion/');
 
+  const isSocial = request.nextUrl.pathname === '/redes' || request.nextUrl.pathname.startsWith('/redes/');
+  if (isSocial) {
+    if (request.nextUrl.pathname !== '/redes/login' && !request.cookies.get('social_session')?.value) {
+      return NextResponse.redirect(new URL('/redes/login', request.url));
+    }
+    return NextResponse.next();
+  }
+
+  const isTickets = request.nextUrl.pathname === '/facturas' || request.nextUrl.pathname.startsWith('/facturas/');
+  if (isTickets) {
+    if (request.nextUrl.pathname !== '/facturas/login' && !request.cookies.get('tickets_session')?.value) {
+      return NextResponse.redirect(new URL('/facturas/login', request.url));
+    }
+    return NextResponse.next();
+  }
+
   if (request.nextUrl.pathname === '/prospeccion-ia') {
     return NextResponse.redirect(new URL('/prospeccion', request.url));
+  }
+
+  if (isPortal) {
+    return NextResponse.next();
   }
 
   if (isBi || isBiLogin) {
@@ -47,7 +68,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (hasSession && isLogin) {
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(new URL('/crm', request.url));
   }
 
   return NextResponse.next();

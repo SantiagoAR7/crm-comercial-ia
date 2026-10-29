@@ -1,0 +1,113 @@
+{
+  "workbook": "01RB2V67KTVYSPXEV5GFFKV6FOETC4UPXJ",
+  "targets": {
+    "TECNICO 01": {
+      "table": "{678415D9-F352-4697-8C45-3557ECC48B33}",
+      "sheet": "{00000000-0001-0000-0000-000000000000}",
+      "sheetName": "TECNICO 01",
+      "tableName": "TablaTecnico01"
+    },
+    "TECNICO 02": {
+      "table": "{CA1D140D-32C5-419F-A988-B7D38059D349}",
+      "sheet": "{83297C89-6D4F-441B-A0FD-4B25BB81DC02}",
+      "sheetName": "TECNICO 02",
+      "tableName": "TablaTecnico02"
+    },
+    "TECNICO 03": {
+      "table": "{C0B0DA5F-AD9E-4753-9E4E-93A98D48B65A}",
+      "sheet": "{AE5F8790-CD9C-46AB-9F8E-D526A711B234}",
+      "sheetName": "TECNICO 03",
+      "tableName": "TablaTecnico03"
+    },
+    "TECNICO 04": {
+      "table": "{F5B43ACA-6726-498A-8295-3E7CBC7126B0}",
+      "sheet": "{C363B55A-7626-419F-BECA-FC55CC4A5900}",
+      "sheetName": "TECNICO 04",
+      "tableName": "TablaTecnico04"
+    },
+    "TECNICO 05": {
+      "table": "{C2478F20-1617-41CF-8035-18AF15955FBC}",
+      "sheet": "{3F6D97AB-2889-4BC3-8F22-EB46A14CD23A}",
+      "sheetName": "TECNICO 05",
+      "tableName": "TablaTecnico058"
+    },
+    "TECNICO 06": {
+      "table": "{D7C11481-EED1-479A-BB3F-240EFA82265F}",
+      "sheet": "{1AF8EA09-207F-4A0B-95F9-EF9A8F026C69}",
+      "sheetName": "TECNICO 06",
+      "tableName": "TablaTecnico06"
+    },
+    "TECNICO 07": {
+      "table": "{729F78E2-6803-4645-A4D1-4775429A249F}",
+      "sheet": "{37C32E8F-A73B-46F3-B871-1A5E095C4ADD}",
+      "sheetName": "TECNICO 07",
+      "tableName": "TablaTecnico07"
+    },
+    "TECNICO 08": {
+      "table": "{FE6DF8EE-1D5E-4324-8EEA-8ABCC89AE19A}",
+      "sheet": "{B9E1108A-5D16-438D-822E-387D2D2F21B7}",
+      "sheetName": "TECNICO 08",
+      "tableName": "TablaTecnico08"
+    },
+    "TECNICO 09": {
+      "table": "{2E5D2FA5-FC62-4B50-AD16-2E470338EBA0}",
+      "sheet": "{F1AFCB61-9F25-4EC0-BD0C-FFFA82483BE3}",
+      "sheetName": "TECNICO 09",
+      "tableName": "TablaTecnico09"
+    },
+    "TECNICO 10": {
+      "table": "{94829E35-493D-4D0E-931D-B56349610F0C}",
+      "sheet": "{6C50CDE3-BC2C-412A-A768-A3B8C3B5E8EF}",
+      "sheetName": "TECNICO 10",
+      "tableName": "TablaTecnico10"
+    },
+    "TECNICO 11": {
+      "table": "{B189BFC4-55D5-48B5-9739-04146E460565}",
+      "sheet": "{8837808C-0AD1-4F2E-8167-49C6C3495A88}",
+      "sheetName": "TECNICO 11",
+      "tableName": "TablaTecnico11"
+    },
+    "TECNICO 12": {
+      "table": "{68A441AA-738D-43A9-A87C-CB38FA647395}",
+      "sheet": "{4A544C19-3C4E-4FF6-A6D3-3AEC3709D112}",
+      "sheetName": "TECNICO 12",
+      "tableName": "TablaTecnico12"
+    },
+    "TECNICO 13": {
+      "table": "{9FF101BA-39AA-42A2-A7B0-FF997EDDE962}",
+      "sheet": "{D20C52D1-5D9D-4405-BFA8-0A0159E3B2AA}",
+      "sheetName": "TECNICO 13",
+      "tableName": "TablaTecnico13"
+    },
+    "TECNICO 14": {
+      "table": "{AD7D6948-9E9B-4ECE-A34E-0418207D1805}",
+      "sheet": "{10CD3F28-FC3D-476A-B080-8F20CE34DDF4}",
+      "sheetName": "TECNICO 14",
+      "tableName": "TablaTecnico14"
+    },
+    "TECNICO 15": {
+      "table": "{0E9C229D-D887-49C4-879C-44BA0FF93953}",
+      "sheet": "{590654BF-14CF-468B-9E0F-F3091F4D9682}",
+      "sheetName": "TECNICO 15",
+      "tableName": "TablaTecnico15"
+    },
+    "TECNICO 16": {
+      "table": "{0EBB870A-E38F-4B48-8E92-653094272EA3}",
+      "sheet": "{AF44A543-E765-4759-88C0-E8B587B7E570}",
+      "sheetName": "TECNICO 16",
+      "tableName": "TablaTecnico16"
+    },
+    "TECNICO 17": {
+      "table": "{CBBCF1DE-4050-44EF-9E1A-81ECBF996F6B}",
+      "sheet": "{48A144E5-D403-4CB2-BBB1-CD7D760BCAD4}",
+      "sheetName": "TECNICO 17",
+      "tableName": "TablaTecnico17"
+    },
+    "Pagos Tarjeta": {
+      "table": "{53E3F985-7CC9-43E7-B735-6DEE4A303AD1}",
+      "sheet": "{0AD1FBCB-E32E-4531-9C6A-57FC19D8C42C}",
+      "sheetName": "PAGOS TARJETA",
+      "tableName": "TablaPagosElectronicos"
+    }
+  }
+}
