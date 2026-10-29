@@ -12,7 +12,7 @@ const items = [
   { href: '/campanas', label: 'Campañas', icon: Megaphone },
   { href: '/ia-comercial', label: 'IA Comercial', icon: Bot },
   { href: '/oportunidades', label: 'Oportunidades', icon: Target },
-  { href: '/redes_sociales', label: 'Redes sociales', icon: Share2 },
+  { href: '/redes', label: 'Redes sociales', icon: Share2 },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
