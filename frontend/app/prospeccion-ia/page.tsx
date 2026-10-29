@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2,
@@ -305,11 +306,14 @@ const prospectingVerticals = [
 ];
 
 const workflowSteps = [
-  { number: '01', title: 'Estrategia', description: 'Elige vertical y usa ideas LinkedIn sin mezclar mercados.' },
-  { number: '02', title: 'Criterios', description: 'Define lista, ICP, ubicación, dolor, oferta y exclusiones.' },
-  { number: '03', title: 'Búsqueda', description: 'Ejecuta Prospeo solo cuando los filtros estén revisados.' },
-  { number: '04', title: 'Contacto', description: 'Genera mensajes, envía emails y registra respuestas.' },
+  { id: 'authority', number: '01', title: 'Estrategia', description: 'Verticales e ideas LinkedIn.', icon: Sparkles },
+  { id: 'criteria', number: '02', title: 'Criterios', description: 'Lista, ICP y filtros.', icon: SlidersHorizontal },
+  { id: 'search', number: '03', title: 'Búsqueda', description: 'Prospeo controlado.', icon: Search },
+  { id: 'communication', number: '04', title: 'Comunicación', description: 'Email, respuestas y panel.', icon: Mail },
+  { id: 'prospects', number: '05', title: 'Prospectos', description: 'Mensajes, IA e historial.', icon: Building2 },
 ];
+
+type WorkspaceTab = typeof workflowSteps[number]['id'];
 
 const linkedinPostIdeas = [
   {
@@ -381,6 +385,7 @@ Beta Facility,betafacility.es,Carlos Ruiz,Gerente,carlos@betafacility.es,Servici
 export default function AiProspectingPage() {
   const [lists, setLists] = useState<ProspectingList[]>([]);
   const [selectedListId, setSelectedListId] = useState('');
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>('authority');
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [selectedProspectId, setSelectedProspectId] = useState('');
   const [loadingLists, setLoadingLists] = useState(true);
@@ -1010,6 +1015,7 @@ export default function AiProspectingPage() {
     setProspectFilter('TODOS');
     setSelectedProspectId(item.prospectId);
     setHighlightMessageId(item.nextMessageId || null);
+    setActiveWorkspaceTab('prospects');
     if (item.nextMessageId) {
       setMessage('Mensaje seleccionado para revisión. Confirma el contenido y usa “Enviar email” cuando esté listo.');
     } else if (item.type === 'MISSING_EMAIL') {
@@ -1097,6 +1103,7 @@ export default function AiProspectingPage() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo clasificar la respuesta.');
       setSelectedProspectId(item.prospectId);
+      setActiveWorkspaceTab('prospects');
       setMessage(`Respuesta marcada como ${classification.replace(/_/g, ' ')}.`);
       await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
@@ -1114,23 +1121,79 @@ export default function AiProspectingPage() {
     }
   }
 
+  function openProspectDetail(prospectId: string) {
+    setProspectFilter('TODOS');
+    setSelectedProspectId(prospectId);
+    setActiveWorkspaceTab('prospects');
+  }
+
   async function copyLinkedInIdea(idea: typeof linkedinPostIdeas[number]) {
     const text = `${idea.title}\n\n${idea.body}\n\n${idea.cta}`;
     await navigator.clipboard.writeText(text);
     setMessage('Idea de LinkedIn copiada para revisar y publicar.');
   }
 
+  const activeTab = workflowSteps.find((step) => step.id === activeWorkspaceTab) || workflowSteps[0];
+
   return (
-    <div className="bg-slate-50 p-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">Prospeccion externa</p>
-          <h2 className="mt-1 text-3xl font-bold text-slate-950">Centro de Prospección Davofrío</h2>
-          <p className="mt-2 text-sm text-slate-500">
-            Estrategia, búsqueda industrial, ideas LinkedIn, mensajes y seguimiento en un solo flujo.
-          </p>
+    <div className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="border-b border-slate-200 bg-[#082b5b] px-4 py-5 text-white lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:border-blue-900/20">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
+            <Image src="/icon.png" alt="Davofrío" width={42} height={42} priority />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-extrabold tracking-wide">DAVOFRÍO</p>
+            <p className="text-xs font-medium text-blue-200">Prospección IA</p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="my-5 h-px bg-white/10" />
+        <p className="mb-2 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Módulos</p>
+        <nav className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+          {workflowSteps.map((step) => {
+            const Icon = step.icon;
+            const active = activeWorkspaceTab === step.id;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => setActiveWorkspaceTab(step.id)}
+                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${active ? 'bg-white text-[#082b5b] shadow-sm' : 'text-blue-100 hover:bg-white/10 hover:text-white'}`}
+              >
+                <Icon size={18} />
+                <span className="min-w-0">
+                  <span className="block">{step.title}</span>
+                  <span className={`block truncate text-xs font-medium ${active ? 'text-slate-500' : 'text-blue-200'}`}>{step.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-200">Lista activa</p>
+          <p className="mt-2 truncate text-sm font-semibold text-white">{selectedList?.name || 'Sin lista seleccionada'}</p>
+          <p className="mt-1 text-xs text-blue-200">{prospects.length} prospectos cargados</p>
+        </div>
+
+        <button
+          onClick={logoutProspecting}
+          className="mt-4 w-full rounded-xl border border-white/10 px-3 py-2.5 text-left text-sm font-semibold text-white hover:bg-white/10"
+        >
+          Salir
+        </button>
+      </aside>
+
+      <main className="p-6 lg:p-8">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">Prospeccion externa</p>
+            <h2 className="mt-1 text-3xl font-bold text-slate-950">Centro de Prospección Davofrío</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              {activeTab.number} · {activeTab.title}: {activeTab.description}
+            </p>
+          </div>
           <button
             onClick={loadLists}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
@@ -1138,14 +1201,7 @@ export default function AiProspectingPage() {
             <RefreshCw size={17} />
             Actualizar
           </button>
-          <button
-            onClick={logoutProspecting}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-          >
-            Salir
-          </button>
         </div>
-      </div>
 
       {message && (
         <div className="mb-5 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
@@ -1159,16 +1215,8 @@ export default function AiProspectingPage() {
         <Metric icon={<Sparkles size={20} />} label="Investigados" value={lists.reduce((total, list) => total + (list.researched_prospects || 0), 0)} />
       </section>
 
-      <section className="mb-6 grid gap-3 md:grid-cols-4">
-        {workflowSteps.map((step) => (
-          <article key={step.number} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{step.number}</p>
-            <h3 className="mt-2 text-sm font-bold text-slate-950">{step.title}</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-500">{step.description}</p>
-          </article>
-        ))}
-      </section>
-
+      {activeWorkspaceTab === 'authority' && (
+        <>
       <SectionHeader
         number="01"
         title="Estrategia y autoridad"
@@ -1244,7 +1292,11 @@ export default function AiProspectingPage() {
           ))}
         </div>
       </section>
+        </>
+      )}
 
+      {activeWorkspaceTab === 'criteria' && (
+        <>
       <SectionHeader
         number="02"
         title="Preparar lista y criterios"
@@ -1482,7 +1534,13 @@ export default function AiProspectingPage() {
               </div>
             </form>
           </section>
+        </div>
+      </div>
+        </>
+      )}
 
+      {activeWorkspaceTab === 'search' && (
+        <>
           <SectionHeader
             number="03"
             title="Búsqueda controlada"
@@ -1571,7 +1629,11 @@ export default function AiProspectingPage() {
               </div>
             </form>
           </section>
+        </>
+      )}
 
+      {activeWorkspaceTab === 'communication' && (
+        <>
           <SectionHeader
             number="04"
             title="Comunicación y seguimiento"
@@ -1670,7 +1732,7 @@ export default function AiProspectingPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <button
                         type="button"
-                        onClick={() => setSelectedProspectId(item.prospectId)}
+                        onClick={() => openProspectDetail(item.prospectId)}
                         className="min-w-0 text-left"
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -1683,7 +1745,7 @@ export default function AiProspectingPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSelectedProspectId(item.prospectId)}
+                        onClick={() => openProspectDetail(item.prospectId)}
                         className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
                         Ver prospecto
@@ -1731,7 +1793,7 @@ export default function AiProspectingPage() {
                 {(campaignSummary?.followUps || []).map((item) => (
                   <article key={item.id} className={`rounded-lg border p-4 ${item.overdue ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <button type="button" onClick={() => setSelectedProspectId(item.prospectId)} className="text-left">
+                      <button type="button" onClick={() => openProspectDetail(item.prospectId)} className="text-left">
                         <div className="flex flex-wrap items-center gap-2">
                           <h5 className="font-bold text-slate-950">{item.companyName || 'Prospecto sin empresa'}</h5>
                           <ContactBadge status={item.outcome || 'MAS_TARDE'} />
@@ -1780,7 +1842,7 @@ export default function AiProspectingPage() {
                 {sequenceSummary.actions.slice(0, 8).map((item) => (
                   <article key={`${item.prospectId}-${item.type}-${item.nextMessageId || item.lastSentAt || item.lastActivityAt || 'action'}`} className="rounded-lg border border-slate-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <button type="button" onClick={() => setSelectedProspectId(item.prospectId)} className="min-w-0 text-left">
+                      <button type="button" onClick={() => openProspectDetail(item.prospectId)} className="min-w-0 text-left">
                         <div className="flex flex-wrap items-center gap-2">
                           <h5 className="font-bold text-slate-950">{item.companyName || 'Prospecto sin empresa'}</h5>
                           <SequenceBadge type={item.type} label={item.label} />
@@ -1825,7 +1887,11 @@ export default function AiProspectingPage() {
               </div>
             </div>
           </section>
+        </>
+      )}
 
+      {activeWorkspaceTab === 'prospects' && (
+        <>
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2217,8 +2283,9 @@ export default function AiProspectingPage() {
               )}
             </aside>
           </section>
-        </div>
-      </div>
+        </>
+      )}
+      </main>
     </div>
   );
 }
