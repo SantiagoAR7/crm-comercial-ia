@@ -315,7 +315,15 @@ const workflowSteps = [
 
 type WorkspaceTab = typeof workflowSteps[number]['id'];
 
-const linkedinPostIdeas = [
+type LinkedInPostIdea = {
+  vertical: string;
+  title: string;
+  angle: string;
+  body: string;
+  cta: string;
+};
+
+const linkedinPostIdeas: LinkedInPostIdea[] = [
   {
     vertical: 'Industrial',
     title: 'El agua refrigerada también es producción',
@@ -357,6 +365,93 @@ const linkedinPostIdeas = [
     angle: 'Autoridad Davofrío',
     body: 'La aerotermia no empieza cuando llega la unidad exterior. Empieza cuando alguien mide, calcula y decide qué necesita realmente la vivienda. Sin ese paso, el presupuesto es solo una apuesta.',
     cta: 'Idea de cierre: proyecto térmico antes de instalación.',
+  },
+];
+
+const generatedLinkedinIdeaSeeds: LinkedInPostIdea[] = [
+  {
+    vertical: 'Industrial',
+    title: 'Cuando el chiller falla, no falla solo el chiller',
+    angle: 'Riesgo de parada productiva',
+    body: 'En una fábrica con inyección o extrusión, una avería en refrigeración puede convertirse en merma, retrasos y cambios de planificación. Por eso el mantenimiento no debería empezar cuando aparece la alarma.',
+    cta: 'Idea de cierre: revisar puntos críticos antes del pico de producción.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'Temperatura estable, ciclos más previsibles',
+    angle: 'Calidad y repetibilidad de proceso',
+    body: 'La estabilidad térmica no solo afecta al confort de una nave. En procesos plásticos puede influir en ciclos, tolerancias, acabados y continuidad. Lo invisible también se mide en producción.',
+    cta: 'Idea de cierre: hablar de refrigeración como parte del control de calidad.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'La sala blanca empieza en el mantenimiento',
+    angle: 'Control ambiental y trazabilidad',
+    body: 'Una sala blanca no se mantiene solo con una buena instalación inicial. Necesita revisiones, datos, control de filtros, presión, humedad y temperatura. La calidad se protege en la rutina.',
+    cta: 'Idea de cierre: proponer auditoría de condiciones ambientales.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'El coste oculto de enfriar tarde',
+    angle: 'Prevención frente a urgencias',
+    body: 'Muchas instalaciones industriales se revisan cuando ya hay una incidencia. El problema es que en producción el tiempo de reacción casi siempre cuesta más que la prevención.',
+    cta: 'Idea de cierre: convertir mantenimiento preventivo en ventaja operativa.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'Agua refrigerada: el servicio que sostiene la línea',
+    angle: 'Infraestructura crítica',
+    body: 'Cuando el agua refrigerada funciona bien, casi nadie habla de ella. Cuando falla, todos la notan. Esa es la diferencia entre un sistema auxiliar y una infraestructura crítica.',
+    cta: 'Idea de cierre: abrir conversación sobre redundancia y estabilidad.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'No todo problema de producción nace en la máquina',
+    angle: 'Diagnóstico técnico',
+    body: 'A veces se ajusta la máquina, el molde o el ritmo de trabajo, pero el origen está en la climatización de proceso. Mirar temperatura, caudal y mantenimiento cambia el diagnóstico.',
+    cta: 'Idea de cierre: revisar proceso completo antes de asumir la causa.',
+  },
+  {
+    vertical: 'Aerotermia',
+    title: 'La aerotermia no perdona el cálculo débil',
+    angle: 'Ingeniería previa',
+    body: 'Una buena instalación empieza antes de elegir la máquina. Empieza con demanda térmica, uso real de la vivienda, orientación, aislamientos y expectativas de confort.',
+    cta: 'Idea de cierre: defender el cálculo antes del presupuesto.',
+  },
+  {
+    vertical: 'Aerotermia',
+    title: 'Confort no es poner más potencia',
+    angle: 'Diseño eficiente',
+    body: 'Sobredimensionar puede parecer prudente, pero no siempre mejora el confort. Una solución bien calculada busca equilibrio: rendimiento, consumo, ruido, integración y mantenimiento.',
+    cta: 'Idea de cierre: explicar por qué menos improvisación genera mejores instalaciones.',
+  },
+  {
+    vertical: 'Arquitectos',
+    title: 'La climatización también se diseña',
+    angle: 'Coordinación con arquitectura',
+    body: 'Cuando la climatización entra tarde en un proyecto, aparecen compromisos: recorridos forzados, máquinas visibles, rejillas mal ubicadas o soluciones menos elegantes.',
+    cta: 'Idea de cierre: invitar a integrar instalaciones desde plano.',
+  },
+  {
+    vertical: 'Arquitectos',
+    title: 'El lujo también es silencio térmico',
+    angle: 'Experiencia en villas',
+    body: 'En una villa, el confort no debería llamar la atención. Ni por ruido, ni por corrientes, ni por consumo. La mejor climatización acompaña al diseño sin competir con él.',
+    cta: 'Idea de cierre: hablar de confort invisible como valor de proyecto.',
+  },
+  {
+    vertical: 'Arquitectos',
+    title: 'La instalación que no se planifica se nota al final',
+    angle: 'Evitar correcciones de obra',
+    body: 'Muchos problemas de climatización aparecen cuando la obra ya está avanzada. Coordinar ingeniería e interiorismo desde el principio reduce cambios, retrabajos y decisiones de emergencia.',
+    cta: 'Idea de cierre: proponer revisión técnica temprana de proyectos.',
+  },
+  {
+    vertical: 'Aerotermia',
+    title: 'Comparar máquinas no es comparar soluciones',
+    angle: 'Diferenciación técnica',
+    body: 'Dos presupuestos pueden mencionar aerotermia y parecer equivalentes. Pero la diferencia está en cálculo, hidráulica, control, integración, puesta en marcha y mantenimiento.',
+    cta: 'Idea de cierre: enseñar al cliente a comparar método, no solo precio.',
   },
 ];
 
@@ -418,6 +513,9 @@ export default function AiProspectingPage() {
   const [messageDrafts, setMessageDrafts] = useState<Record<string, { subject: string; body: string }>>({});
   const [outreachForm, setOutreachForm] = useState<OutreachForm>(emptyOutreachForm);
   const [responseForm, setResponseForm] = useState<ResponseForm>(emptyResponseForm);
+  const [linkedinIdeas, setLinkedinIdeas] = useState<LinkedInPostIdea[]>(linkedinPostIdeas);
+  const [linkedinIdeaFilter, setLinkedinIdeaFilter] = useState('Todos');
+  const [linkedinIdeaBatch, setLinkedinIdeaBatch] = useState(0);
 
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) || null,
@@ -486,6 +584,12 @@ export default function AiProspectingPage() {
     },
     actions: [],
   };
+
+  const visibleLinkedinIdeas = useMemo(
+    () => linkedinIdeas.filter((idea) => linkedinIdeaFilter === 'Todos' || idea.vertical === linkedinIdeaFilter),
+    [linkedinIdeas, linkedinIdeaFilter],
+  );
+
   const criteriaReadiness = useMemo(() => {
     const items = [
       { label: 'Sector', ready: Boolean(criteriaForm.sector.trim()) },
@@ -1133,6 +1237,27 @@ export default function AiProspectingPage() {
     setMessage('Idea de LinkedIn copiada para revisar y publicar.');
   }
 
+  function generateMoreLinkedinIdeas() {
+    const nextBatch = linkedinIdeaBatch + 1;
+    const start = (nextBatch * 6) % generatedLinkedinIdeaSeeds.length;
+    const nextIdeas = Array.from({ length: 6 }, (_, index) => {
+      const seed = generatedLinkedinIdeaSeeds[(start + index) % generatedLinkedinIdeaSeeds.length];
+      return {
+        ...seed,
+        title: `${seed.title}`,
+      };
+    });
+    setLinkedinIdeaBatch(nextBatch);
+    setLinkedinIdeas(nextIdeas);
+    setMessage('Nuevas ideas de LinkedIn generadas para revisar.');
+  }
+
+  function restoreBaseLinkedinIdeas() {
+    setLinkedinIdeas(linkedinPostIdeas);
+    setLinkedinIdeaFilter('Todos');
+    setMessage('Ideas base de LinkedIn restauradas.');
+  }
+
   const activeTab = workflowSteps.find((step) => step.id === activeWorkspaceTab) || workflowSteps[0];
 
   return (
@@ -1293,12 +1418,41 @@ export default function AiProspectingPage() {
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Ideas de publicación</p>
             <h3 className="mt-1 text-lg font-bold text-slate-950">LinkedIn con línea técnica Davofrío</h3>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
-              Piezas rápidas para autoridad. Industrial y aerotermia quedan etiquetadas para no mezclar audiencias.
+              Piezas rápidas para autoridad. Filtra por audiencia o genera nuevas variaciones sin consumir IA ni créditos.
             </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={generateMoreLinkedinIdeas}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800"
+            >
+              <Sparkles size={15} />
+              Generar más ideas
+            </button>
+            <button
+              type="button"
+              onClick={restoreBaseLinkedinIdeas}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Restaurar base
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {['Todos', 'Industrial', 'Aerotermia', 'Arquitectos'].map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setLinkedinIdeaFilter(filter)}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${linkedinIdeaFilter === filter ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+            >
+              {filter}
+            </button>
+          ))}
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          {linkedinPostIdeas.map((idea) => (
+          {visibleLinkedinIdeas.map((idea) => (
             <article key={`${idea.vertical}-${idea.title}`} className="rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${idea.vertical === 'Industrial' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
