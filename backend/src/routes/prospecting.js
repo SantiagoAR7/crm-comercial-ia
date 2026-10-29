@@ -103,10 +103,24 @@ function isPlasticProspectingList(list) {
   const haystack = [
     list?.name,
     list?.description,
+    list?.icp?.vertical,
     list?.icp?.sector,
     list?.icp?.searchNotes,
   ].map(normalizeText).join(' ').toLowerCase();
-  return /pl[aá]stic|plastic|inyecci[oó]n/.test(haystack);
+  return /industrial_foia_castalla|pl[aá]stic|plastic|inyecci[oó]n|extrusi[oó]n/.test(haystack);
+}
+
+function isIndustrialCoolingProspectingList(list) {
+  const haystack = [
+    list?.name,
+    list?.description,
+    list?.icp?.vertical,
+    list?.icp?.sector,
+    list?.icp?.pain,
+    list?.icp?.offer,
+    list?.icp?.searchNotes,
+  ].map(normalizeText).join(' ').toLowerCase();
+  return /industrial_foia_castalla|refrigeraci[oó]n industrial|agua refrigerada|chiller|sala blanca|pl[aá]stic|plastic|inyecci[oó]n|extrusi[oó]n/.test(haystack);
 }
 
 function lockPlasticProspeoFilters(payload) {
@@ -454,6 +468,10 @@ function priorityFromScore(score) {
 }
 
 function buildResearch(prospect, list) {
+  if (isIndustrialCoolingProspectingList(list)) {
+    return buildIndustrialCoolingResearch(prospect, list);
+  }
+
   const company = prospect.company_name;
   const role = prospect.contact_role || 'responsable comercial/operativo';
   const sector = prospect.sector || list?.icp?.sector || 'su sector';
@@ -477,7 +495,41 @@ function buildResearch(prospect, list) {
   };
 }
 
+function buildIndustrialCoolingResearch(prospect, list) {
+  const company = prospect.company_name;
+  const role = prospect.contact_role || 'gerencia, mantenimiento u operaciones';
+  const sector = prospect.sector || list?.icp?.sector || 'industria con proceso productivo';
+  const offer = list?.icp?.offer || 'un diagnóstico técnico de refrigeración y climatización de proceso';
+  const pain = list?.icp?.pain || 'evitar paradas de producción, estabilizar agua refrigerada y pasar de mantenimiento reactivo a preventivo';
+
+  return {
+    company_summary: `${company} encaja con una campaña industrial para ${sector}. La prioridad es validar si su proceso depende de temperatura estable, agua refrigerada, chillers, climatización de planta o condiciones de sala blanca.`,
+    pain_hypothesis: `Como ${role}, probablemente le interese ${pain}.`,
+    buying_signal: prospect.website
+      ? `Tiene presencia web identificada (${prospect.website}), suficiente para revisar señales de proceso industrial antes de contactar.`
+      : 'Falta web corporativa; conviene enriquecer o revisar manualmente antes de contactar.',
+    personalization_angle: 'Abrir con una hipótesis técnica sobre continuidad de producción, control de temperatura y mantenimiento de refrigeración industrial. Evitar mensajes de aerotermia residencial o venta genérica.',
+    objections: [
+      'Ya tenemos empresa de mantenimiento.',
+      'Ahora no podemos parar producción.',
+      'Solo revisamos proveedores cuando hay avería.',
+      'Envia información técnica por correo.',
+    ],
+    recommended_offer: offer,
+    confidence: prospect.website || prospect.email ? 'MEDIA' : 'BAJA',
+  };
+}
+
 function buildMessages(prospect, research) {
+  const isIndustrial = /refrigeraci[oó]n|agua refrigerada|producci[oó]n|chiller|sala blanca|industrial/i.test([
+    research.company_summary,
+    research.pain_hypothesis,
+    research.recommended_offer,
+  ].join(' '));
+  if (isIndustrial) {
+    return buildIndustrialCoolingMessages(prospect, research);
+  }
+
   const contact = prospect.contact_name || 'equipo';
   const company = prospect.company_name;
   const angle = research.personalization_angle;
@@ -501,6 +553,33 @@ function buildMessages(prospect, research) {
       step: 2,
       subject: `Re: ${company} | idea rapida`,
       body: `Hola ${contact},\n\nTe escribo solo para cerrar el hilo. La idea no era venderte algo a ciegas, sino validar si hay margen para mejorar prospeccion, seguimiento o cualificacion comercial en ${company}.\n\nSi no es prioridad, lo dejo aqui. Si tiene sentido, puedo enviarte una propuesta concreta en 3 puntos.\n\nGracias,`,
+    },
+  ];
+}
+
+function buildIndustrialCoolingMessages(prospect, research) {
+  const contact = prospect.contact_name || 'equipo';
+  const company = prospect.company_name;
+  const offer = research.recommended_offer;
+
+  return [
+    {
+      channel: 'EMAIL',
+      step: 1,
+      subject: `${company} | refrigeración de proceso`,
+      body: `Hola ${contact},\n\nTe escribo desde Davofrío porque estamos revisando empresas industriales de la zona de Ibi/Castalla/Alcoy donde la temperatura del proceso, el agua refrigerada o la climatización de planta pueden afectar producción.\n\nNo quería enviarte una propuesta genérica. La idea es validar si en ${company} tiene sentido revisar refrigeración industrial, mantenimiento preventivo o estabilidad de temperatura en proceso/salas blancas.\n\n¿Tiene sentido que lo veamos en una llamada corta y, si encaja, os enviamos un diagnóstico técnico inicial?\n\nUn saludo,`,
+    },
+    {
+      channel: 'LINKEDIN',
+      step: 1,
+      subject: null,
+      body: `Hola ${contact}, vi ${company} y quería conectar. En Davofrío estamos trabajando la parte de refrigeración industrial y climatización de proceso en la zona de Foia de Castalla, especialmente donde el agua refrigerada o la temperatura estable impactan producción.`,
+    },
+    {
+      channel: 'EMAIL',
+      step: 2,
+      subject: `Re: ${company} | refrigeración de proceso`,
+      body: `Hola ${contact},\n\nTe escribo solo para cerrar el hilo. No era una venta a ciegas: queríamos validar si en ${company} hay algún punto crítico de refrigeración, agua refrigerada, mantenimiento o climatización de proceso que merezca revisión.\n\nSi ya lo tenéis cubierto, lo dejo aquí. Si tiene sentido, puedo enviarte una propuesta concreta de revisión técnica en 3 puntos.\n\nGracias,`,
     },
   ];
 }
@@ -580,6 +659,8 @@ async function generateWithOpenAI(prospect, list) {
         'Eres un SDR B2B senior para campañas outbound revisadas por humanos.',
         'Escribe en español natural, directo y profesional.',
         'No inventes datos específicos no presentes. Si falta información, trabaja con hipótesis prudentes.',
+        'Si la lista es industrial Foia de Castalla, plásticos, inyección, extrusión, agua refrigerada, chillers o salas blancas, centra el mensaje en refrigeración industrial, climatización de proceso, continuidad de producción y mantenimiento preventivo. No uses aerotermia residencial ni prospección comercial genérica.',
+        'Si la lista es aerotermia/LinkedIn, úsala como autoridad y contenido técnico, no como búsqueda industrial.',
         'Devuelve exclusivamente JSON válido con las claves research y messages.',
         'messages debe incluir email paso 1, LinkedIn paso 1 y email follow-up paso 2.',
       ].join(' '),

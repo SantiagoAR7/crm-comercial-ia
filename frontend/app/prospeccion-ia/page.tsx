@@ -87,6 +87,7 @@ type Prospect = {
 type ListForm = {
   name: string;
   description: string;
+  vertical: string;
   sector: string;
   country: string;
   targetRole: string;
@@ -95,6 +96,7 @@ type ListForm = {
 };
 
 type CampaignCriteriaForm = {
+  vertical: string;
   sector: string;
   country: string;
   targetRole: string;
@@ -238,6 +240,7 @@ type ResponseForm = {
 const emptyListForm: ListForm = {
   name: '',
   description: '',
+  vertical: '',
   sector: '',
   country: '',
   targetRole: '',
@@ -246,6 +249,7 @@ const emptyListForm: ListForm = {
 };
 
 const emptyCampaignCriteriaForm: CampaignCriteriaForm = {
+  vertical: '',
   sector: '',
   country: '',
   targetRole: '',
@@ -264,6 +268,41 @@ const emptyProspeoForm: ProspeoForm = {
   maxResults: 10,
   confirmSpend: false,
 };
+
+const prospectingVerticals = [
+  {
+    id: 'industrial_foia_castalla',
+    label: 'Industrial Foia de Castalla',
+    badge: 'Prioridad',
+    description: 'Búsqueda de fabricantes con procesos de plástico, agua refrigerada, climatización industrial y salas blancas.',
+    listName: 'Industrial Foia de Castalla',
+    sector: 'Plastics Manufacturing, Plastics and Rubber Product Manufacturing',
+    country: 'Ibi, Spain; Castalla, Spain; Onil, Spain; Tibi, Spain; Villena, Spain; Biar, Spain; Alcoy, Spain; Banyeres, Spain',
+    targetRole: 'gerente, director de operaciones, responsable de mantenimiento, responsable de producción, responsable de planta',
+    companySize: '11-50, 50-200, 200+',
+    pain: 'Paradas de producción por temperatura inestable, procesos de inyección o extrusión que necesitan agua refrigerada, consumo energético alto, mantenimiento reactivo, calidad afectada por temperatura o humedad.',
+    offer: 'Diagnóstico técnico de refrigeración y climatización de proceso para estabilizar producción, revisar agua refrigerada/chillers y planificar mantenimiento preventivo.',
+    excludedSectors: 'Residencial, comercios, hostelería, freelancers, formación, servicios sin proceso productivo, empresas fuera de la zona objetivo',
+    searchNotes: 'Priorizar empresas de inyección, extrusión, transformación de plásticos, moldes, packaging, termoplásticos, salas blancas o procesos que dependan de agua refrigerada. No mezclar con aerotermia residencial.',
+    companyKeywords: 'inyección de plásticos, extrusión de plásticos, moldes, termoplásticos, inyectora, sala blanca, agua refrigerada, chiller, plastic injection molding',
+  },
+  {
+    id: 'aerotermia_linkedin',
+    label: 'Aerotermia / Villas / Arquitectos',
+    badge: 'Autoridad LinkedIn',
+    description: 'Línea de contenido y autoridad. Útil para posts y mensajes a villas, arquitectos y decoradores, no para la búsqueda industrial.',
+    listName: 'Autoridad LinkedIn aerotermia',
+    sector: 'Arquitectura, diseño de interiores, villas residenciales, aerotermia residencial',
+    country: 'Costa de Alicante, Jávea, Dénia, Moraira, Alicante, Spain',
+    targetRole: 'arquitecto, interiorista, project manager, propietario de villa, promotor residencial',
+    companySize: '',
+    pain: 'Presupuestos a ojo, climatización decidida tarde en obra, falta de cálculo de demanda térmica, miedo a instalaciones que no dan confort o disparan consumo.',
+    offer: 'Proyecto de ingeniería térmica y contenido de autoridad para educar sobre cálculo previo, integración en obra y mantenimiento.',
+    excludedSectors: 'Industria plástica, fábricas, procesos productivos, búsquedas industriales',
+    searchNotes: 'Usar para ideas de LinkedIn, autoridad y mensajes B2B a arquitectura. Mantener separado de la prospección industrial.',
+    companyKeywords: 'aerotermia, villa, arquitectura, interiorismo, obra nueva, reforma integral, demanda térmica',
+  },
+];
 
 const emptyOutreachForm: OutreachForm = {
   channel: 'EMAIL',
@@ -326,6 +365,11 @@ export default function AiProspectingPage() {
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) || null,
     [lists, selectedListId],
+  );
+
+  const selectedVertical = useMemo(
+    () => prospectingVerticals.find((item) => item.id === criteriaForm.vertical || item.id === selectedList?.icp?.vertical) || null,
+    [criteriaForm.vertical, selectedList],
   );
 
   const selectedProspect = useMemo(
@@ -487,6 +531,7 @@ export default function AiProspectingPage() {
   useEffect(() => {
     const icp = selectedList?.icp || {};
     const nextCriteria = {
+      vertical: readIcpString(icp, 'vertical'),
       sector: readIcpString(icp, 'sector'),
       country: readIcpString(icp, 'country'),
       targetRole: readIcpString(icp, 'targetRole'),
@@ -502,10 +547,51 @@ export default function AiProspectingPage() {
       jobTitles: nextCriteria.targetRole || current.jobTitles,
       locations: nextCriteria.country || current.locations,
       industries: nextCriteria.sector || current.industries,
-      companyKeywords: current.companyKeywords,
+      companyKeywords: readIcpString(icp, 'companyKeywords') || current.companyKeywords,
       confirmSpend: false,
     }));
   }, [selectedList]);
+
+  function applyVerticalPreset(verticalId: string, target: 'list' | 'criteria' = 'criteria') {
+    const preset = prospectingVerticals.find((item) => item.id === verticalId);
+    if (!preset) return;
+
+    if (target === 'list') {
+      setListForm((current) => ({
+        ...current,
+        name: current.name || preset.listName,
+        description: current.description || preset.description,
+        vertical: preset.id,
+        sector: preset.sector,
+        country: preset.country,
+        targetRole: preset.targetRole,
+        pain: preset.pain,
+        offer: preset.offer,
+      }));
+    }
+
+    setCriteriaForm((current) => ({
+      ...current,
+      vertical: preset.id,
+      sector: preset.sector,
+      country: preset.country,
+      targetRole: preset.targetRole,
+      companySize: preset.companySize,
+      pain: preset.pain,
+      offer: preset.offer,
+      excludedSectors: preset.excludedSectors,
+      searchNotes: preset.searchNotes,
+    }));
+    setProspeoForm((current) => ({
+      ...current,
+      jobTitles: preset.targetRole,
+      locations: preset.country,
+      industries: preset.sector,
+      companyKeywords: preset.companyKeywords,
+      confirmSpend: false,
+    }));
+    setMessage(`${preset.label} aplicado. Revisa criterios antes de autorizar Prospeo.`);
+  }
 
   useEffect(() => {
     const drafts: Record<string, { subject: string; body: string }> = {};
@@ -539,6 +625,7 @@ export default function AiProspectingPage() {
           name: listForm.name,
           description: listForm.description,
           icp: {
+            vertical: listForm.vertical,
             sector: listForm.sector,
             country: listForm.country,
             targetRole: listForm.targetRole,
@@ -572,6 +659,7 @@ export default function AiProspectingPage() {
         body: JSON.stringify({
           icp: {
             ...(selectedList.icp || {}),
+            vertical: criteriaForm.vertical,
             sector: criteriaForm.sector,
             country: criteriaForm.country,
             targetRole: criteriaForm.targetRole,
@@ -580,6 +668,7 @@ export default function AiProspectingPage() {
             companySize: criteriaForm.companySize,
             excludedSectors: criteriaForm.excludedSectors,
             searchNotes: criteriaForm.searchNotes,
+            companyKeywords: prospeoForm.companyKeywords,
           },
           status: selectedList.status === 'BORRADOR' ? 'REVISION' : selectedList.status,
         }),
@@ -1010,6 +1099,41 @@ export default function AiProspectingPage() {
         <Metric icon={<Sparkles size={20} />} label="Investigados" value={lists.reduce((total, list) => total + (list.researched_prospects || 0), 0)} />
       </section>
 
+      <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Verticales separadas</p>
+            <h3 className="mt-1 text-lg font-bold text-slate-950">Industrial primero, aerotermia como autoridad</h3>
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              La búsqueda real debe usar la vertical industrial. La línea de aerotermia queda para LinkedIn, autoridad y públicos residenciales/profesionales.
+            </p>
+          </div>
+          {selectedVertical && (
+            <span className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white">
+              Activa: {selectedVertical.label}
+            </span>
+          )}
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {prospectingVerticals.map((vertical) => (
+            <button
+              key={vertical.id}
+              type="button"
+              onClick={() => applyVerticalPreset(vertical.id)}
+              className={`rounded-lg border p-4 text-left transition ${criteriaForm.vertical === vertical.id ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+            >
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${criteriaForm.vertical === vertical.id ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                {vertical.badge}
+              </span>
+              <span className="mt-2 block text-sm font-bold">{vertical.label}</span>
+              <span className={`mt-1 block text-sm ${criteriaForm.vertical === vertical.id ? 'text-slate-200' : 'text-slate-500'}`}>
+                {vertical.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1017,9 +1141,29 @@ export default function AiProspectingPage() {
               <Plus size={18} className="text-slate-500" />
               <h3 className="font-bold text-slate-950">Nueva lista</h3>
             </div>
+            <div className="mt-4 grid gap-2">
+              {prospectingVerticals.map((vertical) => (
+                <button
+                  key={vertical.id}
+                  type="button"
+                  onClick={() => applyVerticalPreset(vertical.id, 'list')}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Usar preset: {vertical.label}
+                </button>
+              ))}
+            </div>
             <form onSubmit={createList} className="mt-5 space-y-4">
               <Field label="Nombre">
                 <input required value={listForm.name} onChange={(event) => setListForm({ ...listForm, name: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2.5" placeholder="Empresas industriales Alicante" />
+              </Field>
+              <Field label="Vertical">
+                <select value={listForm.vertical} onChange={(event) => setListForm({ ...listForm, vertical: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                  <option value="">Sin vertical</option>
+                  {prospectingVerticals.map((vertical) => (
+                    <option key={vertical.id} value={vertical.id}>{vertical.label}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="Sector">
                 <input value={listForm.sector} onChange={(event) => setListForm({ ...listForm, sector: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2.5" placeholder="Industria, hospitality, facility..." />
@@ -1116,6 +1260,19 @@ export default function AiProspectingPage() {
               </span>
             </div>
             <form onSubmit={saveCampaignCriteria} className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Field label="Vertical">
+                <select
+                  disabled={!selectedListId}
+                  value={criteriaForm.vertical}
+                  onChange={(event) => applyVerticalPreset(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 disabled:bg-slate-50"
+                >
+                  <option value="">Seleccionar vertical</option>
+                  {prospectingVerticals.map((vertical) => (
+                    <option key={vertical.id} value={vertical.id}>{vertical.label}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Sector objetivo">
                 <input
                   disabled={!selectedListId}
