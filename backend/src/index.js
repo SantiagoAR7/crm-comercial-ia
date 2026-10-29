@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth.js';
 import { biAuthRouter } from './routes/bi-auth.js';
 import { biRouter } from './routes/bi.js';
 import { prospectingAuthRouter } from './routes/prospecting-auth.js';
+import { socialPublicationsRouter } from './routes/social-publications.js';
 import { requireAuth, requireBiAuth, requireProspectingAuth } from './services/auth.js';
 import { startProspectingEmailWorker } from './services/prospecting-email.js';
 
@@ -44,6 +45,7 @@ app.use('/api/prospecting/auth', prospectingAuthRouter);
 app.use('/api/prospecting', requireProspectingAuth, prospectingRouter);
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/campaigns/webhooks/')) return next();
+  if (req.path === '/social-publications/webhook/n8n') return next();
   return requireAuth(req, res, next);
 });
 
@@ -53,6 +55,7 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/commercial-ai', commercialAiRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/social-publications', socialPublicationsRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
