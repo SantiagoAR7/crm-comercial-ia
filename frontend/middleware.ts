@@ -18,10 +18,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/prospeccion', request.url));
   }
 
-  if (request.nextUrl.pathname === '/redes_sociales') {
-    return NextResponse.redirect(new URL('/redes', request.url));
-  }
-
   if (isBi || isBiLogin) {
     if (!hasBiSession && !isBiLogin) {
       return NextResponse.redirect(new URL('/bi-login', request.url));
