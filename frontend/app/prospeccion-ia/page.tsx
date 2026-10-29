@@ -304,6 +304,58 @@ const prospectingVerticals = [
   },
 ];
 
+const workflowSteps = [
+  { number: '01', title: 'Estrategia', description: 'Elige vertical y usa ideas LinkedIn sin mezclar mercados.' },
+  { number: '02', title: 'Criterios', description: 'Define lista, ICP, ubicación, dolor, oferta y exclusiones.' },
+  { number: '03', title: 'Búsqueda', description: 'Ejecuta Prospeo solo cuando los filtros estén revisados.' },
+  { number: '04', title: 'Contacto', description: 'Genera mensajes, envía emails y registra respuestas.' },
+];
+
+const linkedinPostIdeas = [
+  {
+    vertical: 'Industrial',
+    title: 'El agua refrigerada también es producción',
+    angle: 'Refrigeración industrial como continuidad operativa',
+    body: 'En una planta de inyección o extrusión, el agua refrigerada no es un servicio auxiliar. Es parte del proceso. Si la temperatura fluctúa, la calidad, los ciclos y la producción lo notan antes que nadie.',
+    cta: 'Idea de cierre: revisar estabilidad de temperatura antes de que aparezca la parada.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'Mantenimiento reactivo vs preventivo',
+    angle: 'Coste oculto de esperar a la avería',
+    body: 'La pregunta no es cuánto cuesta revisar una instalación de refrigeración industrial. La pregunta es cuánto cuesta parar una línea porque el sistema no estaba preparado para el pico de demanda.',
+    cta: 'Idea de cierre: diagnóstico preventivo para chillers, agua refrigerada y climatización de proceso.',
+  },
+  {
+    vertical: 'Industrial',
+    title: 'Salas blancas: enfriar no basta',
+    angle: 'Autoridad técnica en control ambiental',
+    body: 'Una sala blanca no se resuelve solo bajando temperatura. Hay que pensar en estabilidad, filtración, presión, humedad, mantenimiento y trazabilidad. Si una de esas piezas falla, el problema aparece en calidad.',
+    cta: 'Idea de cierre: abrir conversación sobre control ambiental integral.',
+  },
+  {
+    vertical: 'Aerotermia',
+    title: 'Presupuestos a ojo',
+    angle: 'Contra el estándar débil del mercado',
+    body: 'Dos viviendas con los mismos metros pueden necesitar soluciones de climatización muy distintas. La diferencia no la marca el catálogo. La marca el cálculo de demanda térmica por estancia.',
+    cta: 'Idea de cierre: antes de comparar precios, comparar método.',
+  },
+  {
+    vertical: 'Arquitectos',
+    title: 'El clima que no sale en las fotos',
+    angle: 'Climatización integrada en proyecto',
+    body: 'El mejor sistema de climatización en una villa es el que no obliga al diseño a corregirse al final. Cuando clima, arquitectura e instalación se coordinan desde plano, el resultado se nota precisamente porque no estorba.',
+    cta: 'Idea de cierre: hablar antes de cerrar instalaciones.',
+  },
+  {
+    vertical: 'Aerotermia',
+    title: 'Ingeniería antes que máquina',
+    angle: 'Autoridad Davofrío',
+    body: 'La aerotermia no empieza cuando llega la unidad exterior. Empieza cuando alguien mide, calcula y decide qué necesita realmente la vivienda. Sin ese paso, el presupuesto es solo una apuesta.',
+    cta: 'Idea de cierre: proyecto térmico antes de instalación.',
+  },
+];
+
 const emptyOutreachForm: OutreachForm = {
   channel: 'EMAIL',
   contactName: '',
@@ -1062,29 +1114,37 @@ export default function AiProspectingPage() {
     }
   }
 
+  async function copyLinkedInIdea(idea: typeof linkedinPostIdeas[number]) {
+    const text = `${idea.title}\n\n${idea.body}\n\n${idea.cta}`;
+    await navigator.clipboard.writeText(text);
+    setMessage('Idea de LinkedIn copiada para revisar y publicar.');
+  }
+
   return (
-    <div className="p-8">
+    <div className="bg-slate-50 p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-slate-500">Prospeccion externa</p>
-          <h2 className="mt-1 text-3xl font-bold text-slate-950">Prospección IA</h2>
+          <h2 className="mt-1 text-3xl font-bold text-slate-950">Centro de Prospección Davofrío</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Crea listas B2B, investiga prospectos y prepara mensajes para revision humana.
+            Estrategia, búsqueda industrial, ideas LinkedIn, mensajes y seguimiento en un solo flujo.
           </p>
         </div>
-        <button
-          onClick={loadLists}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-        >
-          <RefreshCw size={17} />
-          Actualizar
-        </button>
-        <button
-          onClick={logoutProspecting}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-        >
-          Salir
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={loadLists}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <RefreshCw size={17} />
+            Actualizar
+          </button>
+          <button
+            onClick={logoutProspecting}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            Salir
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -1098,6 +1158,22 @@ export default function AiProspectingPage() {
         <Metric icon={<Building2 size={20} />} label="Prospectos" value={lists.reduce((total, list) => total + (list.total_prospects || 0), 0)} />
         <Metric icon={<Sparkles size={20} />} label="Investigados" value={lists.reduce((total, list) => total + (list.researched_prospects || 0), 0)} />
       </section>
+
+      <section className="mb-6 grid gap-3 md:grid-cols-4">
+        {workflowSteps.map((step) => (
+          <article key={step.number} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{step.number}</p>
+            <h3 className="mt-2 text-sm font-bold text-slate-950">{step.title}</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500">{step.description}</p>
+          </article>
+        ))}
+      </section>
+
+      <SectionHeader
+        number="01"
+        title="Estrategia y autoridad"
+        description="Primero se separa la búsqueda industrial de la línea de LinkedIn. Así cada acción tiene un objetivo claro."
+      />
 
       <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1133,6 +1209,47 @@ export default function AiProspectingPage() {
           ))}
         </div>
       </section>
+
+      <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Ideas de publicación</p>
+            <h3 className="mt-1 text-lg font-bold text-slate-950">LinkedIn con línea técnica Davofrío</h3>
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              Piezas rápidas para autoridad. Industrial y aerotermia quedan etiquetadas para no mezclar audiencias.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {linkedinPostIdeas.map((idea) => (
+            <article key={`${idea.vertical}-${idea.title}`} className="rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${idea.vertical === 'Industrial' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {idea.vertical}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">{idea.angle}</span>
+              </div>
+              <h4 className="mt-3 font-bold text-slate-950">{idea.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{idea.body}</p>
+              <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{idea.cta}</p>
+              <button
+                type="button"
+                onClick={() => copyLinkedInIdea(idea)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <Copy size={14} />
+                Copiar idea
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <SectionHeader
+        number="02"
+        title="Preparar lista y criterios"
+        description="Aquí se crea o selecciona la lista, se fija el ICP y se deja Prospeo listo, pero sin gastar créditos hasta autorizar."
+      />
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
@@ -1211,7 +1328,7 @@ export default function AiProspectingPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Upload size={18} className="text-slate-500" />
-                  <h3 className="font-bold text-slate-950">Importar prospectos</h3>
+                  <h3 className="font-bold text-slate-950">Carga manual opcional</h3>
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
                   {selectedList ? selectedList.name : 'Selecciona o crea una lista.'}
@@ -1366,6 +1483,12 @@ export default function AiProspectingPage() {
             </form>
           </section>
 
+          <SectionHeader
+            number="03"
+            title="Búsqueda controlada"
+            description="Revisa los filtros y autoriza Prospeo solo cuando el criterio esté limpio. Esta parte puede consumir créditos."
+          />
+
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1448,6 +1571,12 @@ export default function AiProspectingPage() {
               </div>
             </form>
           </section>
+
+          <SectionHeader
+            number="04"
+            title="Comunicación y seguimiento"
+            description="Desde aquí se revisa el correo conectado, respuestas, follow-ups y estado de cada prospecto."
+          />
 
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2230,6 +2359,18 @@ function CampaignMetric({ label, value, tone, compact = false }: { label: string
     <div className={`rounded-lg border px-4 ${compact ? 'py-3' : 'py-4'} ${classes}`}>
       <p className="text-xs font-bold uppercase text-current opacity-70">{label}</p>
       <p className={`${compact ? 'mt-1 text-xl' : 'mt-2 text-2xl'} font-bold`}>{value.toLocaleString('es-ES')}</p>
+    </div>
+  );
+}
+
+function SectionHeader({ number, title, description }: { number: string; title: string; description: string }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{number}</p>
+        <h2 className="mt-1 text-xl font-bold text-slate-950">{title}</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{description}</p>
+      </div>
     </div>
   );
 }
