@@ -514,7 +514,7 @@ export default function AiProspectingPage() {
   const [outreachForm, setOutreachForm] = useState<OutreachForm>(emptyOutreachForm);
   const [responseForm, setResponseForm] = useState<ResponseForm>(emptyResponseForm);
   const [linkedinIdeas, setLinkedinIdeas] = useState<LinkedInPostIdea[]>(linkedinPostIdeas);
-  const [linkedinIdeaFilter, setLinkedinIdeaFilter] = useState('Todos');
+  const [linkedinIdeaFilter, setLinkedinIdeaFilter] = useState('');
   const [linkedinIdeaBatch, setLinkedinIdeaBatch] = useState(0);
 
   const selectedList = useMemo(
@@ -533,7 +533,7 @@ export default function AiProspectingPage() {
   );
 
   const filteredProspects = useMemo(() => {
-    if (prospectFilter === 'TODOS') return prospects;
+    if (!prospectFilter || prospectFilter === 'TODOS') return prospects;
     if (prospectFilter === 'CONTACTADO') {
       return prospects.filter((prospect) => deriveContactState(prospect).status !== 'SIN_CONTACTAR');
     }
@@ -586,7 +586,7 @@ export default function AiProspectingPage() {
   };
 
   const visibleLinkedinIdeas = useMemo(
-    () => linkedinIdeas.filter((idea) => linkedinIdeaFilter === 'Todos' || idea.vertical === linkedinIdeaFilter),
+    () => linkedinIdeas.filter((idea) => !linkedinIdeaFilter || linkedinIdeaFilter === 'Todos' || idea.vertical === linkedinIdeaFilter),
     [linkedinIdeas, linkedinIdeaFilter],
   );
 
@@ -1254,8 +1254,16 @@ export default function AiProspectingPage() {
 
   function restoreBaseLinkedinIdeas() {
     setLinkedinIdeas(linkedinPostIdeas);
-    setLinkedinIdeaFilter('Todos');
+    setLinkedinIdeaFilter('');
     setMessage('Ideas base de LinkedIn restauradas.');
+  }
+
+  function toggleLinkedinIdeaFilter(filter: string) {
+    setLinkedinIdeaFilter((current) => current === filter ? '' : filter);
+  }
+
+  function toggleProspectFilter(filter: string) {
+    setProspectFilter((current) => current === filter ? '' : filter);
   }
 
   const activeTab = workflowSteps.find((step) => step.id === activeWorkspaceTab) || workflowSteps[0];
@@ -1444,7 +1452,7 @@ export default function AiProspectingPage() {
             <button
               key={filter}
               type="button"
-              onClick={() => setLinkedinIdeaFilter(filter)}
+              onClick={() => toggleLinkedinIdeaFilter(filter)}
               className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${linkedinIdeaFilter === filter ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
             >
               {filter}
@@ -2121,7 +2129,7 @@ export default function AiProspectingPage() {
                 ].map(([value, label]) => (
                   <button
                     key={value}
-                    onClick={() => setProspectFilter(value)}
+                    onClick={() => toggleProspectFilter(value)}
                     className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${prospectFilter === value ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     {label} {filterCounts[value as keyof typeof filterCounts] || 0}
