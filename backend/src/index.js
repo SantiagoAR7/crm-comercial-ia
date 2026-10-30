@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import {startSocialSync} from './services/social-sync.js';
 import cors from 'cors';
 import express from 'express';
 import { contactsRouter } from './routes/contacts.js';
@@ -73,4 +74,5 @@ app.use((err, _req, res, _next) => {
 app.listen(port, () => {
   console.log(`cliente CRM backend disponible en http://localhost:${port}`);
   startProspectingEmailWorker();
+  startSocialSync();
 });

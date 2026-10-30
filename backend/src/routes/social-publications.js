@@ -1,32 +1,42 @@
+import {socialSyncStatus,syncSocialExecutions} from '../services/social-sync.js';
 import { Router } from 'express';
 import { listSocialPublications, upsertSocialPublication } from '../services/social-publications-store.js';
 
 export const socialPublicationsRouter = Router();
 
+socialPublicationsRouter.post('/sync', async (_req, res, next) => {
+  try {await syncSocialExecutions();res.json(socialSyncStatus());}catch(e){next(e);}
+});
+
 socialPublicationsRouter.get('/', async (req, res, next) => {
   try {
     const search = String(req.query.search || '').toLowerCase().trim();
     const category = String(req.query.category || '').toLowerCase().trim();
-    const status = String(req.query.status || '').toLowerCase().trim();
     const platform = String(req.query.platform || '').toLowerCase().trim();
+    const mediaType = String(req.query.mediaType || '').toLowerCase().trim();
     const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 1000);
-    let records = await listSocialPublications();
+    const published = (await listSocialPublications()).filter(item => item.status === 'publicado' && item.externalPostId && item.externalUrl && (!['Facebook','Instagram'].includes(item.platform) || String(item.mediaOrigin).startsWith('publicación en ')) && ['Facebook','Instagram','TikTok','YouTube'].includes(item.platform));
+    let records = published;
 
     if (search) records = records.filter((item) => [item.category, item.content, item.workflowName, item.platform]
       .some((value) => String(value || '').toLowerCase().includes(search)));
     if (category) records = records.filter((item) => item.category.toLowerCase() === category);
-    if (status) records = records.filter((item) => item.status === status);
     if (platform) records = records.filter((item) => item.platform.toLowerCase() === platform);
 
-    const all = await listSocialPublications();
-    const today = new Date().toISOString().slice(0, 10);
+    if (mediaType) records = records.filter(item => item.mediaType === mediaType);
+    const all = published;
+    const day = value => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid'}).format(new Date(value));
+    const today = day(Date.now());
     res.json({
-      data: records.slice(0, limit),
+      data: records.slice(0, limit).map(({id,category,accountName,title,content,mediaType,platform,publishedAt,externalUrl,imageUrl,videoUrl}) => ({id,category,accountName,title,content,mediaType,platform,publishedAt,externalUrl,imageUrl,videoUrl})),
+      sync: {lastSyncAt:socialSyncStatus().lastSyncAt},
       summary: {
+        images: all.filter(item=>item.mediaType==='imagen').length,
+        videos: all.filter(item=>item.mediaType==='video').length,
+        latest: all[0]?.publishedAt || null,
         total: all.length,
-        today: all.filter((item) => String(item.publishedAt || '').startsWith(today)).length,
+        today: all.filter(item => day(item.publishedAt) === today).length,
         published: all.filter((item) => item.status === 'publicado').length,
-        errors: all.filter((item) => item.status === 'error').length,
       },
       filters: {
         categories: [...new Set(all.map((item) => item.category).filter(Boolean))].sort(),

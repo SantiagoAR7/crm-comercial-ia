@@ -1,66 +1,23 @@
 'use client';
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileImage, Film, Loader2, RefreshCw, Search, Share2 } from 'lucide-react';
-
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-type Publication = { id:string; sourceExecutionId:string|null; workflowName:string|null; category:string; content:string; mediaType:string; platform:string; status:string; publishedAt:string; errorMessage:string|null; externalUrl:string|null };
-type ResponseData = { data:Publication[]; summary:{total:number;today:number;published:number;errors:number}; filters:{categories:string[];platforms:string[]} };
-
-export default function SocialPublicationsPage() {
-  const [payload, setPayload] = useState<ResponseData>({data:[],summary:{total:0,today:0,published:0,errors:0},filters:{categories:[],platforms:[]}});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [status, setStatus] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true); setError('');
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (category) params.set('category', category);
-      if (status) params.set('status', status);
-      const response = await fetch(`${apiUrl}/api/social-publications?${params}`, { cache: 'no-store' });
-      const body = await response.json();
-      if (response.status === 401) { window.location.replace('/redes/login'); return; }
-      if (!response.ok) throw new Error(body.error || 'No se pudo cargar el historial.');
-      setPayload(body);
-    } catch (value) { setError(value instanceof Error ? value.message : 'No se pudo cargar el historial.'); }
-    finally { setLoading(false); }
-  }, [search, category, status]);
-
-  useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [load]);
-  const hasFilters = useMemo(() => Boolean(search || category || status), [search, category, status]);
-
-  return <div className="space-y-7 p-5 sm:p-8">
-    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div><p className="text-sm font-semibold text-slate-500">Control de automatizaciones</p><h1 className="mt-1 text-3xl font-extrabold text-slate-950">Redes sociales</h1><p className="mt-2 max-w-3xl text-sm text-slate-500">Registro de cada ejecución y publicación. Se guarda el contenido y el tipo de recurso, nunca el archivo de imagen o vídeo.</p></div>
-      <div className="flex flex-wrap items-center gap-3"><a href="/" className="text-sm font-semibold text-slate-500">Volver al CRM</a><button onClick={async()=>{await fetch('/api/social/auth/logout',{method:'POST'});window.location.replace('/redes/login');}} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700">Cerrar sesión</button><button onClick={load} disabled={loading} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"><RefreshCw size={17} className={loading?'animate-spin':''}/>Actualizar registro</button></div>
-    </header>
-
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric label="Registros totales" value={payload.summary.total} icon={<Share2 size={20}/>} tone="blue"/>
-      <Metric label="Ejecuciones hoy" value={payload.summary.today} icon={<RefreshCw size={20}/>} tone="violet"/>
-      <Metric label="Publicaciones correctas" value={payload.summary.published} icon={<CheckCircle2 size={20}/>} tone="emerald"/>
-      <Metric label="Errores detectados" value={payload.summary.errors} icon={<AlertTriangle size={20}/>} tone="rose"/>
-    </section>
-
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="grid gap-3 lg:grid-cols-[1fr_240px_200px]">
-        <label className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por contenido, área o flujo…" className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500"/></label>
-        <select value={category} onChange={e=>setCategory(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option value="">Todas las áreas</option>{payload.filters.categories.map(item=><option key={item} value={item.toLowerCase()}>{item}</option>)}</select>
-        <select value={status} onChange={e=>setStatus(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option value="">Todos los estados</option><option value="publicado">Publicado</option><option value="error">Error</option><option value="pendiente">Pendiente</option><option value="omitido">Omitido</option></select>
-      </div>
-    </section>
-
-    {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div>}
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {loading ? <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-slate-500"><Loader2 className="animate-spin" size={20}/>Cargando ejecuciones…</div> : payload.data.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><Share2 size={34} className="mb-3 text-slate-300"/><p className="font-bold text-slate-700">{hasFilters?'No hay resultados para estos filtros':'Todavía no hay publicaciones registradas'}</p><p className="mt-1 max-w-lg text-sm text-slate-500">Aún no se han recibido registros de n8n.</p></div> : <div className="divide-y divide-slate-100">{payload.data.map(item=><PublicationRow key={item.id} item={item}/>)}</div>}
-    </section>
-  </div>;
+import {useCallback,useEffect,useState} from 'react';
+import {ExternalLink,FileImage,Film,Loader2,RefreshCw,Search,Share2,CheckCircle2} from 'lucide-react';
+type Publication={id:string;category:string;accountName:string;title:string;content:string;mediaType:string;platform:string;publishedAt:string;externalUrl:string|null;imageUrl:string|null;videoUrl:string|null};
+type Payload={data:Publication[];summary:{total:number;today:number;images:number;videos:number};sync?:{lastSyncAt:string|null}};
+const empty:Payload={data:[],summary:{total:0,today:0,images:0,videos:0}};
+const categories=['Alicante y Turismo','Psicología Sanitaria','El Mundo del Autismo','Jessica'];
+const date=(value:string)=>new Intl.DateTimeFormat('es-ES',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Madrid'}).format(new Date(value));
+export default function SocialPublicationsPage(){
+ const [payload,setPayload]=useState<Payload>(empty),[loading,setLoading]=useState(true),[refreshing,setRefreshing]=useState(false),[error,setError]=useState('');
+ const [search,setSearch]=useState(''),[category,setCategory]=useState(''),[platform,setPlatform]=useState(''),[mediaType,setMediaType]=useState('');
+ const load=useCallback(async()=>{try{const q=new URLSearchParams({search,category,platform,mediaType,limit:'500'});const r=await fetch('/api/social-publications?'+q,{cache:'no-store'});if(r.status===401){window.location.replace('/redes/login');return;}const b=await r.json();if(!r.ok)throw new Error('No se pudieron actualizar las publicaciones.');setPayload(b);setError('');}catch(e){setError(e instanceof Error?e.message:'No se pudieron actualizar las publicaciones.');}finally{setLoading(false);}},[search,category,platform,mediaType]);
+ useEffect(()=>{const t=setTimeout(load,250),timer=setInterval(load,15000);return()=>{clearTimeout(t);clearInterval(timer);};},[load]);
+ async function refresh(){setRefreshing(true);try{const r=await fetch('/api/social-publications/sync',{method:'POST'});if(r.status===401){window.location.replace('/redes/login');return;}if(!r.ok)throw new Error('No se pudieron actualizar las publicaciones.');await load();}catch(e){setError(e instanceof Error?e.message:'No se pudieron actualizar las publicaciones.');}finally{setRefreshing(false);}}
+ return <div className="mx-auto max-w-[1600px] space-y-6 p-5 sm:p-8"><header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center"><div><p className="text-xs font-bold uppercase tracking-widest text-blue-700">DAVOFRÍO</p><h1 className="mt-2 text-3xl font-extrabold text-slate-950">Publicaciones en redes sociales</h1><p className="mt-2 text-sm text-slate-500">Imágenes y vídeos confirmados como publicados. Horario de España.</p></div><div className="flex flex-wrap items-center gap-3"><a href="/" className="text-sm font-semibold text-slate-500">Volver al CRM</a><button onClick={async()=>{await fetch('/api/social/auth/logout',{method:'POST'});window.location.replace('/redes/login');}} className="rounded-xl border bg-white px-4 py-2.5 text-sm font-bold">Cerrar sesión</button><button onClick={refresh} disabled={refreshing} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><RefreshCw size={17} className={refreshing?'animate-spin':''}/>{refreshing?'Actualizando…':'Actualizar'}</button></div></header>
+ <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Publicaciones" value={payload.summary.total} icon={<Share2 size={20}/>}/><Metric label="Publicadas hoy" value={payload.summary.today} icon={<CheckCircle2 size={20}/>}/><Metric label="Imágenes publicadas" value={payload.summary.images} icon={<FileImage size={20}/>}/><Metric label="Vídeos publicados" value={payload.summary.videos} icon={<Film size={20}/>}/></section>
+ <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_240px_180px_180px]"><label className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={18}/><input aria-label="Buscar publicaciones" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar publicación…" className="w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm"/></label><select aria-label="Categoría" value={category} onChange={e=>setCategory(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm"><option value="">Todas las categorías</option>{categories.map(c=><option key={c} value={c.toLowerCase()}>{c}</option>)}</select><select aria-label="Plataforma" value={platform} onChange={e=>setPlatform(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm"><option value="">Todas las plataformas</option>{['Facebook','Instagram','TikTok','YouTube'].map(c=><option key={c} value={c.toLowerCase()}>{c}</option>)}</select><select aria-label="Tipo de contenido" value={mediaType} onChange={e=>setMediaType(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm"><option value="">Imágenes y vídeos</option><option value="imagen">Solo imágenes</option><option value="video">Solo vídeos</option></select></div></section>
+ {error&&<p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</p>}
+ <section className="space-y-4">{loading?<div className="flex min-h-64 items-center justify-center gap-3"><Loader2 className="animate-spin"/>Cargando publicaciones…</div>:!payload.data.length?<div className="rounded-2xl border bg-white p-16 text-center"><Share2 className="mx-auto mb-3 text-slate-300" size={34}/><p className="font-bold text-slate-700">Todavía no hay publicaciones para estos filtros</p></div>:payload.data.map(item=><PublicationRow key={item.id} item={item}/>)}</section>
+ {payload.sync?.lastSyncAt&&<p className="text-xs text-slate-400">Última actualización: {date(payload.sync.lastSyncAt)}</p>}</div>;
 }
-
-function Metric({label,value,icon,tone}:{label:string;value:number;icon:React.ReactNode;tone:'blue'|'violet'|'emerald'|'rose'}) { const styles={blue:'bg-blue-50 text-blue-700',violet:'bg-violet-50 text-violet-700',emerald:'bg-emerald-50 text-emerald-700',rose:'bg-rose-50 text-rose-700'}; return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl ${styles[tone]}`}>{icon}</div><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-1 text-3xl font-extrabold text-slate-950">{value}</p></div> }
-function PublicationRow({item}:{item:Publication}) { const date=new Intl.DateTimeFormat('es-ES',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Madrid'}).format(new Date(item.publishedAt)); const MediaIcon=item.mediaType==='video'?Film:FileImage; return <article className="grid gap-4 p-5 hover:bg-slate-50/70 lg:grid-cols-[190px_170px_1fr_150px] lg:items-start"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{date}</p><p className="mt-2 text-sm font-bold text-slate-800">{item.category}</p><p className="mt-1 text-xs text-slate-500">{item.platform}</p></div><div className="flex flex-wrap gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.status==='publicado'?'bg-emerald-50 text-emerald-700':item.status==='error'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700'}`}>{item.status}</span><span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"><MediaIcon size={13}/>{item.mediaType}</span></div><div><p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{item.content || 'Sin texto disponible.'}</p>{item.errorMessage&&<p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{item.errorMessage}</p>}<p className="mt-2 text-xs text-slate-400">{item.workflowName || 'Flujo no identificado'}{item.sourceExecutionId?` · Ejecución ${item.sourceExecutionId}`:''}</p></div><div className="lg:text-right">{item.externalUrl&&<a href={item.externalUrl} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-700 hover:underline">Ver publicación</a>}</div></article> }
+function Metric({label,value,icon}:{label:string;value:number;icon:React.ReactNode}){return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">{icon}</div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-3xl font-extrabold text-slate-950">{value}</p></div>;}
+function PublicationRow({item}:{item:Publication}){const [failed,setFailed]=useState(false);const video=item.mediaType==='video'?item.videoUrl:null;return <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3"><div className="flex flex-wrap items-center gap-2"><span className="font-bold text-slate-900">{item.category}</span><span className="text-sm text-slate-500">· {item.platform}</span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">Publicado</span></div><time className="text-xs text-slate-500">{date(item.publishedAt)}</time></div><div className="grid gap-6 p-5 md:grid-cols-[260px_1fr]"><div><div className="flex min-h-44 items-center justify-center overflow-hidden rounded-xl bg-slate-100">{!failed&&video?<video controls preload="metadata" poster={item.imageUrl || undefined} src={video} onError={()=>setFailed(true)} className="max-h-80 w-full"/>:!failed&&item.imageUrl?<img src={item.imageUrl} alt={item.title || 'Publicación'} loading="lazy" referrerPolicy="no-referrer" onError={()=>setFailed(true)} className="max-h-80 w-full object-contain"/>:<div className="p-6 text-center text-xs text-slate-500">{item.mediaType==='video'?<Film className="mx-auto mb-2" size={28}/>:<FileImage className="mx-auto mb-2" size={28}/>}<p>Vista previa no disponible. Puedes abrir la publicación original.</p></div>}</div><p className="mt-3 text-xs font-semibold text-slate-600">{item.accountName}</p></div><div className="min-w-0">{item.title&&<h2 className="mb-3 text-lg font-bold text-slate-900">{item.title}</h2>}<p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{item.content}</p>{item.externalUrl&&<a href={item.externalUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-blue-700">Ver en {item.platform}<ExternalLink size={13}/></a>}</div></div></article>;}
