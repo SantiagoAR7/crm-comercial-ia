@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const storeFile = process.env.LINKEDIN_IDEAS_FILE || path.join(dataDir, 'linkedin-ideas.json');
+const heygenCreateUrl = process.env.HEYGEN_CREATE_URL || 'https://app.heygen.com/';
 let writes = Promise.resolve();
 
 export const linkedinAccounts = [
@@ -147,6 +148,7 @@ function cleanStatus(value) {
 }
 
 function summarizeIdea(idea) {
+  const promptContext = promptContextFromIdea(idea);
   return {
     id: idea.id,
     accountId: idea.accountId,
@@ -165,11 +167,26 @@ function summarizeIdea(idea) {
     hook: idea.hook,
     body: idea.body,
     cta: idea.cta,
+    imagePrompt: idea.imagePrompt || buildImagePrompt(promptContext),
+    videoPrompt: idea.videoPrompt || buildVideoPrompt(promptContext),
+    heygenUrl: idea.heygenUrl || heygenCreateUrl,
     status: idea.status,
     scheduledFor: idea.scheduledFor || null,
     createdAt: idea.createdAt,
     updatedAt: idea.updatedAt,
   };
+}
+
+function promptContextFromIdea(idea) {
+  const account = findById(linkedinAccounts, idea.accountId, 0);
+  const vertical = findById(linkedinVerticals, idea.verticalId, 0);
+  const pain = vertical.pains.find((item) => item.id === idea.painId) || {
+    id: idea.painId || 'custom',
+    label: idea.painLabel || 'dolor principal',
+    text: idea.hook || idea.title || 'Problema técnico a resolver.',
+  };
+  const angle = findById(linkedinAngles, idea.angleId, 0);
+  return { account, vertical, pain, angle };
 }
 
 export async function listLinkedinIdeas(filters = {}) {
@@ -217,6 +234,8 @@ export function generateLinkedinIdeas(input = {}) {
     const format = selectedFormat || linkedinFormats[(index + 2) % linkedinFormats.length];
     const title = buildTitle({ account, vertical, pain, angle, format });
     const body = buildBody({ account, vertical, pain, angle, driver, format });
+    const imagePrompt = buildImagePrompt({ account, vertical, pain, angle });
+    const videoPrompt = buildVideoPrompt({ account, vertical, pain, angle });
 
     return {
       id: crypto.randomUUID(),
@@ -237,6 +256,9 @@ export function generateLinkedinIdeas(input = {}) {
       hook: firstLine(body),
       body,
       cta: callToAction(account, vertical),
+      imagePrompt,
+      videoPrompt,
+      heygenUrl: heygenCreateUrl,
       status: 'pendiente',
       scheduledFor: null,
       source: 'Davofrio LI.html',
@@ -271,6 +293,9 @@ export function updateLinkedinIdea(id, updates = {}) {
       title: typeof updates.title === 'string' ? updates.title.trim() || current.title : current.title,
       body: typeof updates.body === 'string' ? updates.body.trim() || current.body : current.body,
       cta: typeof updates.cta === 'string' ? updates.cta.trim() || current.cta : current.cta,
+      imagePrompt: typeof updates.imagePrompt === 'string' ? updates.imagePrompt.trim() || current.imagePrompt : current.imagePrompt,
+      videoPrompt: typeof updates.videoPrompt === 'string' ? updates.videoPrompt.trim() || current.videoPrompt : current.videoPrompt,
+      heygenUrl: typeof updates.heygenUrl === 'string' ? updates.heygenUrl.trim() || current.heygenUrl : current.heygenUrl,
       updatedAt: new Date().toISOString(),
     };
     const ideas = state.ideas.slice();
@@ -411,4 +436,26 @@ function callToAction(account, vertical) {
   if (account.id === 'adrian') return 'Si quieres, lo explicamos con datos antes de hablar de equipos.';
   if (account.id === 'juan') return 'Una conversación bien hecha suele ahorrar muchos malentendidos después.';
   return `Davofrío puede revisar el caso y plantear un diagnóstico inicial para ${vertical.label}.`;
+}
+
+function buildImagePrompt({ account, vertical, pain, angle }) {
+  return [
+    'LinkedIn image, 1:1, realistic clean technical style.',
+    `Theme: ${vertical.label}.`,
+    `Pain: ${pain.label}.`,
+    `Angle: ${angle.label}.`,
+    `Brand: Davofrio, professional refrigeration and HVAC engineering.`,
+    `No text overlays, no logos, no people posing, low token prompt.`,
+  ].join(' ');
+}
+
+function buildVideoPrompt({ account, vertical, pain, angle }) {
+  return [
+    'Short LinkedIn video, 20 seconds, Spanish voiceover.',
+    `Account tone: ${account.name} - ${account.role}.`,
+    `Topic: ${vertical.label}, ${pain.label}.`,
+    `Hook: ${pain.text}`,
+    `Structure: problem, technical criterion, soft CTA.`,
+    `Use simple industrial/HVAC visuals, no long script, low token prompt.`,
+  ].join(' ');
 }

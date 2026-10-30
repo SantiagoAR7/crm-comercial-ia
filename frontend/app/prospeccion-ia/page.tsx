@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   Copy,
   ClipboardList,
+  ExternalLink,
+  ImageIcon,
   Inbox,
   Lightbulb,
   Loader2,
@@ -23,6 +25,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Video,
   XCircle,
 } from 'lucide-react';
 
@@ -333,6 +336,9 @@ type LinkedinIdea = {
   title: string;
   body: string;
   cta: string;
+  imagePrompt: string;
+  videoPrompt: string;
+  heygenUrl: string;
   status: 'pendiente' | 'aprobada' | 'rechazada' | 'programada' | 'publicada';
   scheduledFor: string | null;
   createdAt: string;
@@ -751,6 +757,15 @@ export default function AiProspectingPage() {
   async function copyLinkedinIdea(idea: LinkedinIdea) {
     await navigator.clipboard.writeText([idea.title, idea.body, idea.cta].filter(Boolean).join('\n\n'));
     setMessage('Idea de LinkedIn copiada.');
+  }
+
+  async function copyLinkedinPrompt(label: string, prompt: string) {
+    if (!prompt.trim()) {
+      setMessage(`Esta idea todavía no tiene prompt de ${label}.`);
+      return;
+    }
+    await navigator.clipboard.writeText(prompt);
+    setMessage(`Prompt de ${label} copiado. Solo consume créditos si lo usas en la herramienta externa.`);
   }
 
   async function saveLinkedinSettings() {
@@ -1433,7 +1448,7 @@ export default function AiProspectingPage() {
                       <h3 className="font-bold text-slate-950">Generador de ideas</h3>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                      Elige cuenta, dolor, ángulo y formato. Esto no publica nada; solo crea ideas para revisión.
+                      Elige cuenta, dolor, ángulo y formato. Esto no publica nada ni genera imágenes/videos; solo crea ideas y prompts cortos para revisión.
                     </p>
                   </div>
                   <button
@@ -1508,6 +1523,9 @@ export default function AiProspectingPage() {
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Contexto aplicado</p>
                     <p className="mt-1 text-sm font-semibold text-slate-950">{selectedLinkedinVertical.premise}</p>
                     <p className="mt-1 text-sm leading-6 text-slate-600">{selectedLinkedinVertical.offer}</p>
+                    <p className="mt-2 text-xs font-semibold text-blue-800">
+                      Imagen con OpenAI y video con HeyGen quedan como acciones opcionales por idea. La generación de ideas no consume esas APIs.
+                    </p>
                   </div>
                 )}
               </section>
@@ -1555,6 +1573,53 @@ export default function AiProspectingPage() {
                           <p className="mt-3 text-xs font-semibold text-slate-500">
                             {idea.painLabel} · {idea.angleLabel} · {idea.driverLabel} · {idea.formatLabel}
                           </p>
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                              <div className="flex items-center gap-2 text-sm font-bold text-blue-900">
+                                <ImageIcon size={16} />
+                                ChatGPT/OpenAI imagen opcional
+                              </div>
+                              <p className="mt-2 line-clamp-3 text-xs leading-5 text-blue-900/80">
+                                {idea.imagePrompt || 'Prompt corto pendiente para esta idea.'}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => copyLinkedinPrompt('imagen', idea.imagePrompt)}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:bg-blue-50"
+                              >
+                                <Copy size={14} />
+                                Copiar prompt
+                              </button>
+                            </div>
+                            <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+                              <div className="flex items-center gap-2 text-sm font-bold text-amber-950">
+                                <Video size={16} />
+                                HeyGen video opcional
+                              </div>
+                              <p className="mt-2 line-clamp-3 text-xs leading-5 text-amber-950/80">
+                                {idea.videoPrompt || 'Prompt corto pendiente para esta idea.'}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => copyLinkedinPrompt('video', idea.videoPrompt)}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-50"
+                                >
+                                  <Copy size={14} />
+                                  Copiar prompt
+                                </button>
+                                <a
+                                  href={idea.heygenUrl || 'https://app.heygen.com/'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-50"
+                                >
+                                  <ExternalLink size={14} />
+                                  Abrir HeyGen
+                                </a>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           <button type="button" onClick={() => copyLinkedinIdea(idea)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
@@ -1661,7 +1726,7 @@ export default function AiProspectingPage() {
                   <h3 className="font-bold text-slate-950">Uso en demo</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  La pestaña permite mostrar que la estrategia de contenido nace de los mismos dolores de prospección, pero queda separada por cuenta para no mezclar DAVOFRIO, Adrián y Juan.
+                  La pestaña permite mostrar que la estrategia de contenido nace de los mismos dolores de prospección, pero queda separada por cuenta para no mezclar DAVOFRIO, Adrián y Juan. Los prompts de imagen y video son cortos y opcionales para evitar gasto innecesario.
                 </p>
               </section>
             </aside>
