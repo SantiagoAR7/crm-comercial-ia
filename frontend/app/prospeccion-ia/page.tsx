@@ -905,11 +905,12 @@ export default function AiProspectingPage() {
       const response = await fetch(`${apiUrl}/api/prospecting/lists/${selectedListId}/generate-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 25 }),
+        body: JSON.stringify({ limit: Math.max(25, prospects.length), scope: 'missing' }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo generar el lote.');
-      setMessage(`${body.generated || 0} prospectos generados para revision.`);
+      const skippedText = body.skipped ? ` ${body.skipped} ya tenian investigacion.` : '';
+      setMessage(`${body.generated || 0} prospectos investigados para revision.${skippedText}`);
       await Promise.all([loadLists(), loadProspects(selectedListId), loadCampaignSummary(selectedListId)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Error desconocido.');
@@ -2114,7 +2115,7 @@ export default function AiProspectingPage() {
                     className="inline-flex items-center gap-2 rounded-lg border border-violet-200 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {bulkGenerating ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                    Lote IA
+                    Investigar lista
                   </button>
                 </div>
             </div>

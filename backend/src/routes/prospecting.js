@@ -1769,27 +1769,44 @@ prospectingRouter.post('/prospects/:id/generate-ai', async (req, res) => {
 });
 
 prospectingRouter.post('/lists/:id/generate-ai', async (req, res) => {
-  const { limit = 25 } = req.body ?? {};
-  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
+  const { limit = 25, scope = 'pending' } = req.body ?? {};
+  const safeLimit = Math.min(500, Math.max(1, Number(limit) || 25));
+  const generationScope = ['pending', 'missing', 'all'].includes(scope) ? scope : 'pending';
   const { data: list, error: listError } = await loadList(req.params.id);
   if (listError) return res.status(404).json({ error: 'No se encontro la lista.' });
 
-  const { data: prospects, error: prospectsError } = await supabase
+  let prospectsQuery = supabase
     .from('prospects')
-    .select('*')
+    .select('*, prospect_research(id)')
     .eq('list_id', list.id)
-    .in('status', ['NUEVO', 'INVESTIGADO'])
     .order('created_at', { ascending: true })
     .limit(safeLimit);
+
+  if (generationScope === 'pending') {
+    prospectsQuery = prospectsQuery.in('status', ['NUEVO', 'INVESTIGADO']);
+  } else if (generationScope === 'missing') {
+    prospectsQuery = prospectsQuery.neq('status', 'DESCARTADO');
+  }
+
+  const { data: prospectRows, error: prospectsError } = await prospectsQuery;
 
   if (prospectsError) {
     return res.status(500).json({ error: 'No se pudieron cargar los prospectos pendientes.', detail: prospectsError.message });
   }
 
+  const prospects = generationScope === 'missing'
+    ? (prospectRows || []).filter((prospect) => {
+      const research = Array.isArray(prospect.prospect_research)
+        ? prospect.prospect_research
+        : prospect.prospect_research ? [prospect.prospect_research] : [];
+      return !research.length;
+    })
+    : prospectRows || [];
+
   let generated = 0;
   const errors = [];
 
-  for (const prospect of prospects || []) {
+  for (const prospect of prospects) {
     const fitScore = scoreProspect(prospect);
     const priority = priorityFromScore(fitScore);
     const { research, messages, generatedBy, rawSources } =
@@ -1834,7 +1851,7 @@ prospectingRouter.post('/lists/:id/generate-ai', async (req, res) => {
       .update({
         fit_score: fitScore,
         priority,
-        status: 'MENSAJE_GENERADO',
+        status: ['APROBADO', 'CONVERTIDO', 'DESCARTADO'].includes(prospect.status) ? prospect.status : 'MENSAJE_GENERADO',
       })
       .eq('id', prospect.id);
 
@@ -1857,7 +1874,9 @@ prospectingRouter.post('/lists/:id/generate-ai', async (req, res) => {
 
   return res.json({
     generated,
-    attempted: prospects?.length || 0,
+    attempted: prospectRows?.length || 0,
+    skipped: Math.max(0, (prospectRows?.length || 0) - prospects.length),
+    scope: generationScope,
     errors,
   });
 });
