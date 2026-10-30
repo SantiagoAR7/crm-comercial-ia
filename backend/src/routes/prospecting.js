@@ -3,6 +3,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { supabase } from '../services/supabase.js';
 import { cleanReplyBody, emailStatus, pollProspectingInbox, sendProspectingEmail } from '../services/prospecting-email.js';
+import {
+  linkedinIdeasContext,
+  listLinkedinIdeas,
+  saveGeneratedLinkedinIdeas,
+  updateLinkedinIdea,
+  updateLinkedinSettings,
+} from '../services/linkedin-ideas-store.js';
 
 export const prospectingRouter = Router();
 
@@ -975,6 +982,52 @@ prospectingRouter.get('/email/status', async (_req, res) => {
       detail: error instanceof Error ? error.message : 'Error desconocido.',
     });
   }
+});
+
+prospectingRouter.get('/linkedin/context', async (_req, res, next) => {
+  try {
+    return res.json({ data: await linkedinIdeasContext() });
+  } catch (error) { return next(error); }
+});
+
+prospectingRouter.get('/linkedin/ideas', async (req, res, next) => {
+  try {
+    const status = String(req.query.status || '').trim();
+    const accountId = String(req.query.accountId || '').trim();
+    const verticalId = String(req.query.verticalId || '').trim();
+    const data = await listLinkedinIdeas({ status, accountId, verticalId });
+    return res.json({
+      data,
+      summary: {
+        total: data.length,
+        pending: data.filter((item) => item.status === 'pendiente').length,
+        approved: data.filter((item) => item.status === 'aprobada').length,
+        rejected: data.filter((item) => item.status === 'rechazada').length,
+        scheduled: data.filter((item) => item.status === 'programada').length,
+      },
+    });
+  } catch (error) { return next(error); }
+});
+
+prospectingRouter.post('/linkedin/ideas/generate', async (req, res, next) => {
+  try {
+    const data = await saveGeneratedLinkedinIdeas(req.body || {});
+    return res.status(201).json({ data, generated: data.length });
+  } catch (error) { return next(error); }
+});
+
+prospectingRouter.patch('/linkedin/ideas/:id', async (req, res, next) => {
+  try {
+    const data = await updateLinkedinIdea(req.params.id, req.body || {});
+    if (!data) return res.status(404).json({ error: 'Idea de LinkedIn no encontrada.' });
+    return res.json({ data });
+  } catch (error) { return next(error); }
+});
+
+prospectingRouter.patch('/linkedin/settings', async (req, res, next) => {
+  try {
+    return res.json({ data: await updateLinkedinSettings(req.body || {}) });
+  } catch (error) { return next(error); }
 });
 
 prospectingRouter.post('/lists/:id/prospeo/search-preview', async (req, res) => {

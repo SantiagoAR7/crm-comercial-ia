@@ -4,10 +4,12 @@ import Image from 'next/image';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2,
+  CalendarDays,
   CheckCircle2,
   Copy,
   ClipboardList,
   Inbox,
+  Lightbulb,
   Loader2,
   Mail,
   MessageSquareText,
@@ -16,6 +18,7 @@ import {
   Reply,
   Save,
   Search,
+  Settings,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -291,13 +294,60 @@ const prospectingVerticals = [
 
 const workflowSteps = [
   { id: 'authority', number: '01', title: 'Estrategia', description: 'Vertical industrial y alcance.', icon: Sparkles },
-  { id: 'criteria', number: '02', title: 'Criterios', description: 'Lista, ICP y filtros.', icon: SlidersHorizontal },
-  { id: 'search', number: '03', title: 'Búsqueda', description: 'Prospeo controlado.', icon: Search },
-  { id: 'communication', number: '04', title: 'Comunicación', description: 'Email, respuestas y panel.', icon: Mail },
-  { id: 'prospects', number: '05', title: 'Prospectos', description: 'Mensajes, IA e historial.', icon: Building2 },
+  { id: 'linkedin', number: '02', title: 'Ideas LinkedIn', description: 'Contenido y aprobación.', icon: Lightbulb },
+  { id: 'criteria', number: '03', title: 'Criterios', description: 'Lista, ICP y filtros.', icon: SlidersHorizontal },
+  { id: 'search', number: '04', title: 'Búsqueda', description: 'Prospeo controlado.', icon: Search },
+  { id: 'communication', number: '05', title: 'Comunicación', description: 'Email, respuestas y panel.', icon: Mail },
+  { id: 'prospects', number: '06', title: 'Prospectos', description: 'Mensajes, IA e historial.', icon: Building2 },
 ];
 
 type WorkspaceTab = typeof workflowSteps[number]['id'];
+
+type LinkedinAccount = { id: string; name: string; role: string; line: string };
+type LinkedinPain = { id: string; label: string; text: string };
+type LinkedinVertical = { id: string; label: string; source: string; premise: string; offer: string; pains: LinkedinPain[] };
+type LinkedinOption = { id: string; label: string; guidance?: string };
+type Frequency = Record<string, { postsPerWeek: number; preferredDays: string[] }>;
+type LinkedinContext = {
+  accounts: LinkedinAccount[];
+  verticals: LinkedinVertical[];
+  angles: LinkedinOption[];
+  drivers: LinkedinOption[];
+  formats: LinkedinOption[];
+  settings: { frequency: Frequency };
+};
+type LinkedinIdea = {
+  id: string;
+  accountId: string;
+  accountName: string;
+  verticalId: string;
+  verticalLabel: string;
+  painId: string;
+  painLabel: string;
+  angleId: string;
+  angleLabel: string;
+  driverId: string;
+  driverLabel: string;
+  formatId: string;
+  formatLabel: string;
+  title: string;
+  body: string;
+  cta: string;
+  status: 'pendiente' | 'aprobada' | 'rechazada' | 'programada' | 'publicada';
+  scheduledFor: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+type LinkedinIdeasPayload = {
+  data: LinkedinIdea[];
+  summary: { total: number; pending: number; approved: number; rejected: number; scheduled: number };
+};
+
+const emptyLinkedinIdeas: LinkedinIdeasPayload = {
+  data: [],
+  summary: { total: 0, pending: 0, approved: 0, rejected: 0, scheduled: 0 },
+};
+const linkedinDays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes'];
 
 const emptyOutreachForm: OutreachForm = {
   channel: 'EMAIL',
@@ -357,6 +407,19 @@ export default function AiProspectingPage() {
   const [messageDrafts, setMessageDrafts] = useState<Record<string, { subject: string; body: string }>>({});
   const [outreachForm, setOutreachForm] = useState<OutreachForm>(emptyOutreachForm);
   const [responseForm, setResponseForm] = useState<ResponseForm>(emptyResponseForm);
+  const [linkedinContext, setLinkedinContext] = useState<LinkedinContext | null>(null);
+  const [linkedinIdeas, setLinkedinIdeas] = useState<LinkedinIdeasPayload>(emptyLinkedinIdeas);
+  const [loadingLinkedinIdeas, setLoadingLinkedinIdeas] = useState(true);
+  const [generatingLinkedinIdeas, setGeneratingLinkedinIdeas] = useState(false);
+  const [linkedinStatusFilter, setLinkedinStatusFilter] = useState('');
+  const [linkedinAccountId, setLinkedinAccountId] = useState('davofrio');
+  const [linkedinVerticalId, setLinkedinVerticalId] = useState('industrial_ibi_foia');
+  const [linkedinPainId, setLinkedinPainId] = useState('');
+  const [linkedinAngleId, setLinkedinAngleId] = useState('dolor');
+  const [linkedinDriverId, setLinkedinDriverId] = useState('');
+  const [linkedinFormatId, setLinkedinFormatId] = useState('post_corto');
+  const [linkedinCount, setLinkedinCount] = useState(6);
+  const [linkedinFrequency, setLinkedinFrequency] = useState<Frequency>({});
 
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) || null,
@@ -366,6 +429,11 @@ export default function AiProspectingPage() {
   const selectedVertical = useMemo(
     () => prospectingVerticals.find((item) => item.id === criteriaForm.vertical || item.id === selectedList?.icp?.vertical) || null,
     [criteriaForm.vertical, selectedList],
+  );
+
+  const selectedLinkedinVertical = useMemo(
+    () => linkedinContext?.verticals.find((item) => item.id === linkedinVerticalId) || linkedinContext?.verticals[0],
+    [linkedinContext, linkedinVerticalId],
   );
 
   const selectedProspect = useMemo(
@@ -514,11 +582,56 @@ export default function AiProspectingPage() {
     }
   }, []);
 
+  const loadLinkedinIdeas = useCallback(async () => {
+    setLoadingLinkedinIdeas(true);
+    try {
+      const query = linkedinStatusFilter ? `?status=${encodeURIComponent(linkedinStatusFilter)}` : '';
+      const [contextResponse, ideasResponse] = await Promise.all([
+        fetch(`${apiUrl}/api/prospecting/linkedin/context`, { cache: 'no-store' }),
+        fetch(`${apiUrl}/api/prospecting/linkedin/ideas${query}`, { cache: 'no-store' }),
+      ]);
+      if (contextResponse.status === 401 || ideasResponse.status === 401) {
+        window.location.replace('/prospeccion-login');
+        return;
+      }
+      const contextBody = await contextResponse.json();
+      const ideasBody = await ideasResponse.json();
+      if (!contextResponse.ok) throw new Error(contextBody.error || contextBody.detail || 'No se pudo cargar el contexto de LinkedIn.');
+      if (!ideasResponse.ok) throw new Error(ideasBody.error || ideasBody.detail || 'No se pudieron cargar las ideas de LinkedIn.');
+      const context = contextBody.data as LinkedinContext;
+      setLinkedinContext(context);
+      setLinkedinFrequency(context.settings?.frequency || {});
+      setLinkedinIdeas({
+        data: ideasBody.data || [],
+        summary: ideasBody.summary || emptyLinkedinIdeas.summary,
+      });
+      setLinkedinAccountId((current) => context.accounts.some((item) => item.id === current) ? current : context.accounts[0]?.id || '');
+      setLinkedinVerticalId((current) => context.verticals.some((item) => item.id === current) ? current : context.verticals[0]?.id || '');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido al cargar LinkedIn.');
+    } finally {
+      setLoadingLinkedinIdeas(false);
+    }
+  }, [linkedinStatusFilter]);
+
   useEffect(() => {
     loadLists();
     loadProspeoUsage();
     loadEmailStatus();
   }, [loadLists, loadProspeoUsage, loadEmailStatus]);
+
+  useEffect(() => {
+    loadLinkedinIdeas();
+  }, [loadLinkedinIdeas]);
+
+  useEffect(() => {
+    if (!selectedLinkedinVertical) return;
+    setLinkedinPainId((current) => (
+      selectedLinkedinVertical.pains.some((pain) => pain.id === current)
+        ? current
+        : selectedLinkedinVertical.pains[0]?.id || ''
+    ));
+  }, [selectedLinkedinVertical]);
 
   useEffect(() => {
     loadProspects(selectedListId);
@@ -588,6 +701,73 @@ export default function AiProspectingPage() {
       confirmSpend: false,
     }));
     setMessage(`${preset.label} aplicado. Revisa criterios antes de autorizar Prospeo.`);
+  }
+
+  async function generateLinkedinIdeas(event: FormEvent) {
+    event.preventDefault();
+    setGeneratingLinkedinIdeas(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/linkedin/ideas/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: linkedinAccountId,
+          verticalId: linkedinVerticalId,
+          painId: linkedinPainId,
+          angleId: linkedinAngleId,
+          driverId: linkedinDriverId,
+          formatId: linkedinFormatId,
+          count: linkedinCount,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudieron generar las ideas.');
+      setMessage(`${body.generated || 0} ideas generadas dentro de Prospección.`);
+      await loadLinkedinIdeas();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    } finally {
+      setGeneratingLinkedinIdeas(false);
+    }
+  }
+
+  async function updateLinkedinIdeaStatus(id: string, updates: Partial<LinkedinIdea>) {
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/linkedin/ideas/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo actualizar la idea.');
+      await loadLinkedinIdeas();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    }
+  }
+
+  async function copyLinkedinIdea(idea: LinkedinIdea) {
+    await navigator.clipboard.writeText([idea.title, idea.body, idea.cta].filter(Boolean).join('\n\n'));
+    setMessage('Idea de LinkedIn copiada.');
+  }
+
+  async function saveLinkedinSettings() {
+    setMessage('');
+    try {
+      const response = await fetch(`${apiUrl}/api/prospecting/linkedin/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frequency: linkedinFrequency }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || 'No se pudo guardar la configuración.');
+      setMessage('Frecuencia de publicación guardada.');
+      await loadLinkedinIdeas();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Error desconocido.');
+    }
   }
 
   useEffect(() => {
@@ -1168,7 +1348,7 @@ export default function AiProspectingPage() {
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Vertical de campaña</p>
             <h3 className="mt-1 text-lg font-bold text-slate-950">Industrial Foia de Castalla</h3>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
-              Esta pantalla queda dedicada a búsqueda y seguimiento de prospectos industriales. Las ideas de LinkedIn viven ahora en Redes sociales.
+              Esta pantalla queda dedicada a búsqueda, autoridad LinkedIn y seguimiento de prospectos industriales, todo dentro de Prospección.
             </p>
           </div>
           {selectedVertical && (
@@ -1228,10 +1408,271 @@ export default function AiProspectingPage() {
         </>
       )}
 
+      {activeWorkspaceTab === 'linkedin' && (
+        <>
+          <SectionHeader
+            number="02"
+            title="Ideas LinkedIn"
+            description="Genera propuestas de publicación desde los dolores del documento, separadas por cuenta y vertical para aprobar antes de publicar."
+          />
+
+          <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CampaignMetric label="Pendientes" value={linkedinIdeas.summary.pending} tone="blue" />
+            <CampaignMetric label="Aprobadas" value={linkedinIdeas.summary.approved} tone="emerald" />
+            <CampaignMetric label="Programadas" value={linkedinIdeas.summary.scheduled} tone="amber" />
+            <CampaignMetric label="Rechazadas" value={linkedinIdeas.summary.rejected} tone="rose" />
+          </section>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-6">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Lightbulb size={18} className="text-slate-500" />
+                      <h3 className="font-bold text-slate-950">Generador de ideas</h3>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Elige cuenta, dolor, ángulo y formato. Esto no publica nada; solo crea ideas para revisión.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadLinkedinIdeas}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    <RefreshCw size={16} />
+                    Actualizar
+                  </button>
+                </div>
+
+                <form onSubmit={generateLinkedinIdeas} className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <Field label="Cuenta donde se publicará">
+                    <select value={linkedinAccountId} onChange={(event) => setLinkedinAccountId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      {linkedinContext?.accounts.map((account) => (
+                        <option key={account.id} value={account.id}>{account.name} · {account.role}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Vertical">
+                    <select value={linkedinVerticalId} onChange={(event) => setLinkedinVerticalId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      {linkedinContext?.verticals.map((vertical) => (
+                        <option key={vertical.id} value={vertical.id}>{vertical.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Dolor">
+                    <select value={linkedinPainId} onChange={(event) => setLinkedinPainId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      {selectedLinkedinVertical?.pains.map((pain) => (
+                        <option key={pain.id} value={pain.id}>{pain.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Ángulo">
+                    <select value={linkedinAngleId} onChange={(event) => setLinkedinAngleId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      <option value="">Rotar ángulos</option>
+                      {linkedinContext?.angles.map((angle) => (
+                        <option key={angle.id} value={angle.id}>{angle.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Driver">
+                    <select value={linkedinDriverId} onChange={(event) => setLinkedinDriverId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      <option value="">Rotar drivers</option>
+                      {linkedinContext?.drivers.map((driver) => (
+                        <option key={driver.id} value={driver.id}>{driver.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Formato">
+                    <select value={linkedinFormatId} onChange={(event) => setLinkedinFormatId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+                      <option value="">Rotar formatos</option>
+                      {linkedinContext?.formats.map((format) => (
+                        <option key={format.id} value={format.id}>{format.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Cantidad">
+                    <input type="number" min={1} max={12} value={linkedinCount} onChange={(event) => setLinkedinCount(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+                  </Field>
+                  <div className="flex items-end">
+                    <button disabled={generatingLinkedinIdeas || !linkedinContext} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                      {generatingLinkedinIdeas ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
+                      {generatingLinkedinIdeas ? 'Generando...' : 'Generar ideas'}
+                    </button>
+                  </div>
+                </form>
+
+                {selectedLinkedinVertical && (
+                  <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Contexto aplicado</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">{selectedLinkedinVertical.premise}</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{selectedLinkedinVertical.offer}</p>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-950">Bandeja de ideas</h3>
+                    <p className="mt-1 text-sm text-slate-500">{linkedinIdeas.summary.total} ideas en el filtro actual.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: '', label: 'Todas' },
+                      { id: 'pendiente', label: 'Pendientes' },
+                      { id: 'aprobada', label: 'Aprobadas' },
+                      { id: 'programada', label: 'Programadas' },
+                      { id: 'rechazada', label: 'Rechazadas' },
+                    ].map((item) => (
+                      <button
+                        key={item.id || 'all'}
+                        type="button"
+                        onClick={() => setLinkedinStatusFilter((current) => current === item.id ? '' : item.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold ${linkedinStatusFilter === item.id ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  {loadingLinkedinIdeas && <p className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Cargando ideas...</p>}
+                  {!loadingLinkedinIdeas && linkedinIdeas.data.map((idea) => (
+                    <article key={idea.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <LinkedinStatusBadge status={idea.status} />
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{idea.accountName}</span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{idea.verticalLabel}</span>
+                          </div>
+                          <h4 className="mt-3 text-base font-bold text-slate-950">{idea.title}</h4>
+                          <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{idea.body}</p>
+                          {idea.cta && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{idea.cta}</p>}
+                          <p className="mt-3 text-xs font-semibold text-slate-500">
+                            {idea.painLabel} · {idea.angleLabel} · {idea.driverLabel} · {idea.formatLabel}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button type="button" onClick={() => copyLinkedinIdea(idea)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                            <Copy size={16} />
+                            Copiar
+                          </button>
+                          <button type="button" onClick={() => updateLinkedinIdeaStatus(idea.id, { status: 'aprobada' })} className="rounded-lg border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
+                            Aprobar
+                          </button>
+                          <button type="button" onClick={() => updateLinkedinIdeaStatus(idea.id, { status: 'rechazada' })} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+                            Rechazar
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-end gap-3">
+                        <Field label="Programar">
+                          <input
+                            type="datetime-local"
+                            value={toDateTimeLocal(idea.scheduledFor)}
+                            onChange={(event) => updateLinkedinIdeaStatus(idea.id, { scheduledFor: event.target.value, status: event.target.value ? 'programada' : idea.status })}
+                            className="rounded-lg border border-slate-300 px-3 py-2.5"
+                          />
+                        </Field>
+                        {idea.scheduledFor && (
+                          <p className="pb-3 text-xs font-semibold text-slate-500">Fecha: {formatDate(idea.scheduledFor)}</p>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                  {!loadingLinkedinIdeas && !linkedinIdeas.data.length && (
+                    <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center">
+                      <Lightbulb className="mx-auto text-slate-400" size={24} />
+                      <p className="mt-2 text-sm font-semibold text-slate-700">Todavía no hay ideas en este filtro.</p>
+                      <p className="mt-1 text-sm text-slate-500">Genera nuevas propuestas desde el panel superior.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <aside className="space-y-6">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Settings size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Frecuencia</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">Planifica cuánto publica cada cuenta. No publica automáticamente.</p>
+                <div className="mt-4 space-y-4">
+                  {linkedinContext?.accounts.map((account) => {
+                    const config = linkedinFrequency[account.id] || { postsPerWeek: 1, preferredDays: [] };
+                    return (
+                      <div key={account.id} className="rounded-lg border border-slate-200 p-3">
+                        <p className="text-sm font-bold text-slate-950">{account.name}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{account.line}</p>
+                        <Field label="Posts por semana">
+                          <input
+                            type="number"
+                            min={0}
+                            max={7}
+                            value={config.postsPerWeek}
+                            onChange={(event) => setLinkedinFrequency((current) => ({
+                              ...current,
+                              [account.id]: { ...config, postsPerWeek: Number(event.target.value) },
+                            }))}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                          />
+                        </Field>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {linkedinDays.map((day) => {
+                            const active = config.preferredDays.includes(day);
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => setLinkedinFrequency((current) => ({
+                                  ...current,
+                                  [account.id]: {
+                                    ...config,
+                                    preferredDays: active
+                                      ? config.preferredDays.filter((item) => item !== day)
+                                      : [...config.preferredDays, day],
+                                  },
+                                }))}
+                                className={`rounded-full px-2.5 py-1 text-xs font-bold ${active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+                              >
+                                {day.slice(0, 3)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={saveLinkedinSettings} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+                  <Save size={16} />
+                  Guardar frecuencia
+                </button>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={18} className="text-slate-500" />
+                  <h3 className="font-bold text-slate-950">Uso en demo</h3>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  La pestaña permite mostrar que la estrategia de contenido nace de los mismos dolores de prospección, pero queda separada por cuenta para no mezclar DAVOFRIO, Adrián y Juan.
+                </p>
+              </section>
+            </aside>
+          </div>
+        </>
+      )}
+
       {activeWorkspaceTab === 'criteria' && (
         <>
       <SectionHeader
-        number="02"
+        number="03"
         title="Preparar lista y criterios"
         description="Aquí se crea o selecciona la lista, se fija el ICP y se deja Prospeo listo, pero sin gastar créditos hasta autorizar."
       />
@@ -1475,7 +1916,7 @@ export default function AiProspectingPage() {
       {activeWorkspaceTab === 'search' && (
         <>
           <SectionHeader
-            number="03"
+            number="04"
             title="Búsqueda controlada"
             description="Revisa los filtros y autoriza Prospeo solo cuando el criterio esté limpio. Esta parte puede consumir créditos."
           />
@@ -1568,7 +2009,7 @@ export default function AiProspectingPage() {
       {activeWorkspaceTab === 'communication' && (
         <>
           <SectionHeader
-            number="04"
+            number="05"
             title="Comunicación y seguimiento"
             description="Desde aquí se revisa el correo conectado, respuestas, follow-ups y estado de cada prospecto."
           />
@@ -2328,6 +2769,14 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
 function futureDateTimeLocal(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -2407,6 +2856,25 @@ function ContactBadge({ status }: { status: string }) {
         : 'bg-blue-100 text-blue-700';
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{label}</span>;
+}
+
+function LinkedinStatusBadge({ status }: { status: LinkedinIdea['status'] }) {
+  const labels = {
+    pendiente: 'Pendiente',
+    aprobada: 'Aprobada',
+    rechazada: 'Rechazada',
+    programada: 'Programada',
+    publicada: 'Publicada',
+  };
+  const classes = status === 'aprobada' || status === 'publicada'
+    ? 'bg-emerald-100 text-emerald-700'
+    : status === 'programada'
+      ? 'bg-amber-100 text-amber-700'
+      : status === 'rechazada'
+        ? 'bg-rose-100 text-rose-700'
+        : 'bg-blue-100 text-blue-700';
+
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${classes}`}>{labels[status] || status}</span>;
 }
 
 function SequenceBadge({ type, label }: { type: string; label: string }) {

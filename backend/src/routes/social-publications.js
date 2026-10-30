@@ -1,13 +1,6 @@
 import {socialSyncStatus,syncSocialExecutions} from '../services/social-sync.js';
 import { Router } from 'express';
 import { listSocialPublications, upsertSocialPublication } from '../services/social-publications-store.js';
-import {
-  linkedinIdeasContext,
-  listLinkedinIdeas,
-  saveGeneratedLinkedinIdeas,
-  updateLinkedinIdea,
-  updateLinkedinSettings,
-} from '../services/linkedin-ideas-store.js';
 
 export const socialPublicationsRouter = Router();
 
@@ -51,52 +44,6 @@ socialPublicationsRouter.get('/', async (req, res, next) => {
       },
     });
   } catch (error) { next(error); }
-});
-
-socialPublicationsRouter.get('/linkedin/context', async (_req, res, next) => {
-  try {
-    return res.json({ data: await linkedinIdeasContext() });
-  } catch (error) { return next(error); }
-});
-
-socialPublicationsRouter.get('/linkedin/ideas', async (req, res, next) => {
-  try {
-    const status = String(req.query.status || '').trim();
-    const accountId = String(req.query.accountId || '').trim();
-    const verticalId = String(req.query.verticalId || '').trim();
-    const data = await listLinkedinIdeas({ status, accountId, verticalId });
-    return res.json({
-      data,
-      summary: {
-        total: data.length,
-        pending: data.filter((item) => item.status === 'pendiente').length,
-        approved: data.filter((item) => item.status === 'aprobada').length,
-        rejected: data.filter((item) => item.status === 'rechazada').length,
-        scheduled: data.filter((item) => item.status === 'programada').length,
-      },
-    });
-  } catch (error) { return next(error); }
-});
-
-socialPublicationsRouter.post('/linkedin/ideas/generate', async (req, res, next) => {
-  try {
-    const data = await saveGeneratedLinkedinIdeas(req.body || {});
-    return res.status(201).json({ data, generated: data.length });
-  } catch (error) { return next(error); }
-});
-
-socialPublicationsRouter.patch('/linkedin/ideas/:id', async (req, res, next) => {
-  try {
-    const data = await updateLinkedinIdea(req.params.id, req.body || {});
-    if (!data) return res.status(404).json({ error: 'Idea de LinkedIn no encontrada.' });
-    return res.json({ data });
-  } catch (error) { return next(error); }
-});
-
-socialPublicationsRouter.patch('/linkedin/settings', async (req, res, next) => {
-  try {
-    return res.json({ data: await updateLinkedinSettings(req.body || {}) });
-  } catch (error) { return next(error); }
 });
 
 socialPublicationsRouter.post('/webhook/n8n', async (req, res, next) => {
