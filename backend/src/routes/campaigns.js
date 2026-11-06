@@ -9,7 +9,8 @@ const allowedTypes = new Set(['INVIERNO', 'VERANO', 'SIBER']);
 const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID
   || process.env.VAPI_AGENT_INVIERNO;
 const retellFromNumber = process.env.RETELL_FROM_NUMBER || '+34865621672';
-const campaignRetryDelayMs = 3 * 60 * 60 * 1000;
+const unansweredRetryDelayMs = 3 * 60 * 60 * 1000;
+const failedRetryDelayMs = 60 * 60 * 1000;
 const allowedOutcomes = new Set([
   'INTERESADO',
   'NO_INTERESADO',
@@ -952,10 +953,11 @@ campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async
 
   const now = new Date().toISOString();
   const failed = outcome === 'FALLIDA';
-  const shouldRetry = ['SIN_RESPUESTA', 'BUZON_DE_VOZ'].includes(outcome)
+  const retryableOutcome = ['SIN_RESPUESTA', 'BUZON_DE_VOZ', 'FALLIDA'].includes(outcome);
+  const shouldRetry = retryableOutcome
     && Number(queue.attempt_count || 0) < Number(queue.max_attempts || 3);
   const retryAt = shouldRetry
-    ? new Date(Date.now() + campaignRetryDelayMs).toISOString()
+    ? new Date(Date.now() + (failed ? failedRetryDelayMs : unansweredRetryDelayMs)).toISOString()
     : null;
   const structuredData = body.structuredData || body.structured_data || {};
   const resultRow = {
