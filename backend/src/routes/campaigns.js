@@ -9,6 +9,7 @@ const allowedTypes = new Set(['INVIERNO', 'VERANO', 'SIBER']);
 const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID
   || process.env.VAPI_AGENT_INVIERNO;
 const retellFromNumber = process.env.RETELL_FROM_NUMBER || '+34865621672';
+const campaignRetryDelayMs = 3 * 60 * 60 * 1000;
 const allowedOutcomes = new Set([
   'INTERESADO',
   'NO_INTERESADO',
@@ -938,7 +939,7 @@ campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async
 
   let queueQuery = supabase
     .from('campaign_call_queue')
-    .select('id, run_id, campaign_id, campaign_contact_id, installation_id');
+    .select('id, run_id, campaign_id, campaign_contact_id, installation_id, attempt_count, max_attempts');
   queueQuery = queueId ? queueQuery.eq('id', queueId) : queueQuery.eq('vapi_call_id', retellCallId);
   const { data: queue, error: queueError } = await queueQuery.single();
 
@@ -951,6 +952,11 @@ campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async
 
   const now = new Date().toISOString();
   const failed = outcome === 'FALLIDA';
+  const shouldRetry = ['SIN_RESPUESTA', 'BUZON_DE_VOZ'].includes(outcome)
+    && Number(queue.attempt_count || 0) < Number(queue.max_attempts || 3);
+  const retryAt = shouldRetry
+    ? new Date(Date.now() + campaignRetryDelayMs).toISOString()
+    : null;
   const structuredData = body.structuredData || body.structured_data || {};
   const resultRow = {
     queue_id: queue.id,
@@ -991,8 +997,11 @@ campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async
   const { error: queueUpdateError } = await supabase
     .from('campaign_call_queue')
     .update({
-      status: failed ? 'ERROR' : 'COMPLETADA',
-      completed_at: now,
+      status: shouldRetry ? 'REINTENTO' : failed ? 'ERROR' : 'COMPLETADA',
+      completed_at: shouldRetry ? null : now,
+      scheduled_at: retryAt || undefined,
+      reserved_at: shouldRetry ? null : undefined,
+      locked_until: shouldRetry ? null : undefined,
       vapi_call_id: retellCallId || undefined,
       result_code: outcome,
       last_error: failed ? body.error || body.endedReason || body.ended_reason || 'Llamada fallida' : null,
@@ -1039,7 +1048,15 @@ campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async
     ]);
   }
 
-  return res.json({ success: true, data: result });
+  return res.json({
+    success: true,
+    data: result,
+    retryScheduled: shouldRetry,
+    retryAt,
+    attemptsRemaining: shouldRetry
+      ? Math.max(Number(queue.max_attempts || 3) - Number(queue.attempt_count || 0), 0)
+      : 0,
+  });
 });
 
 campaignsRouter.patch('/:id/status', async (req, res) => {
