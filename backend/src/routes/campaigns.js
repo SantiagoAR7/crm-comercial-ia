@@ -723,6 +723,7 @@ campaignsRouter.post('/:id/send-to-n8n', async (req, res) => {
 
   if (webhookSecret) {
     headers['x-cliente-secret'] = webhookSecret;
+    headers['x-davofrio-secret'] = webhookSecret;
   }
 
   let n8nResponse;
@@ -903,7 +904,8 @@ campaignsRouter.get('/:id/results', async (req, res) => {
 
 campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async (req, res) => {
   const configuredSecret = process.env.N8N_WEBHOOK_SECRET;
-  if (configuredSecret && req.get('x-cliente-secret') !== configuredSecret) {
+  const suppliedSecret = req.get('x-cliente-secret') || req.get('x-davofrio-secret');
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
     return res.status(401).json({ error: 'Webhook no autorizado.' });
   }
 
