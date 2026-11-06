@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { supabase } from '../services/supabase.js';
 
 export const commercialAiRouter = Router();
-const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID;
+const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID
+  || process.env.VAPI_AGENT_INVIERNO;
 
 const month = new Date().getMonth() + 1;
 const seasonalType = month >= 4 && month <= 9 ? 'VERANO' : 'INVIERNO';

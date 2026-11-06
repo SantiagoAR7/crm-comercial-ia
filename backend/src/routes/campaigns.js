@@ -6,7 +6,8 @@ import { isCampaignClientExcluded } from '../services/campaign-exclusions.js';
 export const campaignsRouter = Router();
 
 const allowedTypes = new Set(['INVIERNO', 'VERANO', 'SIBER']);
-const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID;
+const retellCampaignAgentId = process.env.RETELL_CAMPAIGN_AGENT_ID
+  || process.env.VAPI_AGENT_INVIERNO;
 const retellFromNumber = process.env.RETELL_FROM_NUMBER || '+34865621672';
 const allowedOutcomes = new Set([
   'INTERESADO',
@@ -60,6 +61,18 @@ function applyCandidateFilters(query, filters = {}) {
   return query;
 }
 
+function dedupeByNormalizedPhone(rows = []) {
+  const seen = new Set();
+
+  return rows.filter((row) => {
+    const phone = String(row.normalized_phone || '').trim();
+    if (!phone) return true;
+    if (seen.has(phone)) return false;
+    seen.add(phone);
+    return true;
+  });
+}
+
 
 async function fetchAllCandidateRows({
   filters = {},
@@ -105,7 +118,7 @@ async function fetchAllCandidateRows({
     from += pageSize;
   }
 
-  return { data: rows, error: null };
+  return { data: dedupeByNormalizedPhone(rows), error: null };
 }
 
 
@@ -535,8 +548,8 @@ campaignsRouter.post('/:id/send-to-n8n', async (req, res) => {
     });
   }
 
-  const callableContacts = (contacts || []).filter(
-    (contact) => Boolean(contact.normalized_phone),
+  const callableContacts = dedupeByNormalizedPhone(
+    (contacts || []).filter((contact) => Boolean(contact.normalized_phone)),
   );
 
   if (!callableContacts.length) {
