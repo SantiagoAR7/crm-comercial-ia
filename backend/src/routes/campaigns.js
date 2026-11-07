@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../services/supabase.js';
 import { readSettings } from '../services/settings-store.js';
 import { isCampaignClientExcluded } from '../services/campaign-exclusions.js';
+import { requireN8nWebhookAuth } from '../services/webhook-auth.js';
 
 export const campaignsRouter = Router();
 
@@ -904,13 +905,7 @@ campaignsRouter.get('/:id/results', async (req, res) => {
   return res.json({ data: data || [] });
 });
 
-campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], async (req, res) => {
-  const configuredSecret = process.env.N8N_WEBHOOK_SECRET;
-  const suppliedSecret = req.get('x-cliente-secret') || req.get('x-davofrio-secret');
-  if (configuredSecret && suppliedSecret !== configuredSecret) {
-    return res.status(401).json({ error: 'Webhook no autorizado.' });
-  }
-
+campaignsRouter.post(['/webhooks/retell-result', '/webhooks/vapi-result'], requireN8nWebhookAuth, async (req, res) => {
   const body = req.body ?? {};
   const queueId = body.queueId || body.queue_id;
   const retellCallId = body.retellCallId || body.retell_call_id || body.callId ||

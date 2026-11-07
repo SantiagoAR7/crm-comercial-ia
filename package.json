@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "test": "npm --prefix backend test",
     "check:secrets": "node scripts/check-secrets.mjs",
     "build": "npm --prefix frontend run build",
     "audit": "npm --prefix backend audit --omit=dev --audit-level=high && npm --prefix frontend audit --omit=dev --audit-level=high"
