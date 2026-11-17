@@ -349,9 +349,18 @@ export default function BiPage() {
                 {years.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
-            <select value={month} onChange={(event) => setMonth(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm outline-none">
+            <select aria-label="Mes del informe" value={month} onChange={(event) => setMonth(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm outline-none">
               {months.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
+            <button
+              type="button"
+              onClick={() => setMonth('')}
+              disabled={!month}
+              aria-pressed={!month}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:border-sky-200 disabled:bg-sky-50 disabled:text-sky-800 disabled:opacity-100"
+            >
+              Ver año completo
+            </button>
           </div>
         </div>
 
