@@ -26,8 +26,8 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 | Business Intelligence | Consultar métricas del ERP en SQL Server | Credenciales exclusivamente en backend |
 | Redes | Consultar evidencias de publicaciones conservadas en n8n | Sincronización observacional |
 | Facturas y tickets | Revisar evidencias y aprobar o rechazar documentos | Sesión y Supabase independientes; exportaciones con checkpoints |
-| Seguimiento | Tableros de Comercial y Mantenimiento y plantillas de correo | Acceso propio al módulo |
-| Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Avisos e historial en Supabase CRM |
+| Seguimiento | Tableros de Comercial y Mantenimiento y plantillas de correo | Disponible en el portal de Davofrío |
+| Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Disponible en el portal de Davofrío. Avisos e historial en Supabase |
 
 ### Servicio técnico
 
