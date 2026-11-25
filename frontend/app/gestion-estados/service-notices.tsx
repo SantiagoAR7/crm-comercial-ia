@@ -230,6 +230,7 @@ export default async function ServiceNotices({ noticeId, create, error, equipmen
       <EquipmentSummary equipment={selected} />
     </NoticeForm>}
     {create ? <NoticeForm id={randomUUID()} step="create" title="Registrar aviso">
+      <p className="text-sm text-slate-600">Tras guardar el aviso, abre «Revisar cobertura y precio» para registrar el contrato o la garantía.</p>
       {selected && <>
         <input type="hidden" name="equipmentId" value={selected.id} />
         <EquipmentSummary equipment={selected} />
@@ -257,7 +258,10 @@ export default async function ServiceNotices({ noticeId, create, error, equipmen
               <span className="text-sm">{stages[item.stage]}</span>
             </Link>
           </li>)}
-        </ul> : <p>{noticeId ? 'Aviso no encontrado.' : 'Todavía no hay avisos registrados.'}</p>}
+        </ul> : noticeId ? <p>Aviso no encontrado.</p> : <div className="space-y-1">
+          <p className="font-semibold">Todavía no hay avisos registrados.</p>
+          <p className="text-sm text-slate-600">Crea un aviso para revisar su contrato o garantía y calcular el precio antes de agendar.</p>
+        </div>}
       </div>
     )}
   </section>;
