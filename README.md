@@ -27,11 +27,10 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 | Redes | Consultar evidencias de publicaciones conservadas en n8n | Sincronización observacional |
 | Facturas y tickets | Revisar evidencias y aprobar o rechazar documentos | Sesión y Supabase independientes; exportaciones con checkpoints |
 | Seguimiento | Tableros de Comercial y Mantenimiento y plantillas de correo | Disponible en el portal de Davofrío |
-| Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Menú disponible en el portal. Avisos con Supabase está en la rama de desarrollo |
+| Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Disponible en el portal de Davofrío. Avisos e historial en Supabase |
 
 El [módulo de Avisos](https://github.com/SantiagoAR7/crm-comercial-ia/tree/feat/servicio-tecnico)
-guarda los avisos y su historial en Supabase. Su despliegue queda pendiente de
-aplicar la migración y configurar la conexión de producción.
+guarda los avisos y su historial en Supabase y está disponible desde **Servicio técnico → Avisos** en el portal de Davofrío.
 
 El portal `/` presenta los módulos. Las áreas protegidas tienen entradas independientes: `/login`, `/prospeccion-login`, `/bi-login`, `/redes/login` y `/facturas/login`. En el portal de Davofrío, Seguimiento y Servicio técnico se abren desde `/gestion-estados/login`.
 
