@@ -54,7 +54,7 @@ function NoticeForm({ id, step, title, children }: {
   </form>;
 }
 
-function NoticeDetails({ notice }: { notice: ServiceNotice }) {
+async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
   const costs = [['Material', notice.material], ['Mano de obra', notice.labor], ['Desplazamiento', notice.travel]] as const;
   const total = costs.every(([, amount]) => amount !== null)
     ? money.format(costs.reduce((sum, [, amount]) => sum + (amount ?? 0), 0) / 100)
@@ -90,8 +90,8 @@ function NoticeDetails({ notice }: { notice: ServiceNotice }) {
       </dl>
       <h3 className="border-t pt-3 font-bold">Historial</h3>
       <ol className="space-y-1 text-sm">
-        {getNoticeHistory(notice.id).map(entry => <li key={entry.stage}>{stages[entry.stage]} · {
-          new Date(entry.changedAt.replace(' ', 'T')).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })
+        {(await getNoticeHistory(notice.id)).map(entry => <li key={entry.stage}>{stages[entry.stage]} · {
+          new Date(entry.changedAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })
         }</li>)}
       </ol>
     </article>
@@ -119,9 +119,9 @@ function NoticeDetails({ notice }: { notice: ServiceNotice }) {
   </div>;
 }
 
-export default function ServiceNotices({ noticeId, create, error }: { noticeId?: string; create: boolean; error?: string }) {
-  const notice = noticeId ? getNotice(noticeId) : null;
-  const notices = !create && !noticeId ? listNotices() : [];
+export default async function ServiceNotices({ noticeId, create, error }: { noticeId?: string; create: boolean; error?: string }) {
+  const notice = noticeId ? await getNotice(noticeId) : null;
+  const notices = !create && !noticeId ? await listNotices() : [];
   const message = error ? errors[error] : undefined;
   return <section className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">

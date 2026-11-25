@@ -25,9 +25,8 @@ services:
     container_name: davofrio-crm-web
     environment:
       WORKFLOW_SESSION_SECRET: ${WORKFLOW_SESSION_SECRET:-}
-      SERVICE_NOTICE_DB_PATH: /app/service-data/service-notices.sqlite
-    volumes:
-      - service-notice-data:/app/service-data
+      SERVICE_SUPABASE_URL: ${SERVICE_SUPABASE_URL:-}
+      SERVICE_SUPABASE_SECRET_KEY: ${SERVICE_SUPABASE_SECRET_KEY:-}
     depends_on:
       - crm-api
     networks:
@@ -39,9 +38,6 @@ services:
       - "traefik.http.routers.davofrio-crm-web-ia.entrypoints=websecure"
       - "traefik.http.routers.davofrio-crm-web-ia.tls.certresolver=letsencrypt"
       - "traefik.http.services.davofrio-crm-web-ia.loadbalancer.server.port=3000"
-
-volumes:
-  service-notice-data:
 
 networks:
   dokploy-network:

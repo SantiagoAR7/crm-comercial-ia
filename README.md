@@ -4,7 +4,7 @@
 
 **CRM, automatización e inteligencia de negocio para operaciones de climatización.**
 
-Aplicación web que reúne campañas comerciales con aprobación humana, prospección, consulta del ERP, seguimiento de publicaciones y revisión de tickets. Su objetivo es reducir los pasos manuales entre la información operativa y las acciones del equipo, conservando separación de accesos y trazabilidad.
+El portal de Davofrío reúne seguimiento comercial, avisos de servicio técnico, campañas, prospección, BI, publicaciones y gestión documental.
 
 El repositorio contiene el frontend, la API y parte de las migraciones. Los flujos de n8n, los datos del ERP y la configuración de proveedores se administran por separado. **No incluye una demo pública con datos ficticios ni un despliegue autónomo listo para usar.**
 
@@ -26,8 +26,27 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 | Business Intelligence | Consultar métricas del ERP en SQL Server | Credenciales exclusivamente en backend |
 | Redes | Consultar evidencias de publicaciones conservadas en n8n | Sincronización observacional |
 | Facturas y tickets | Revisar evidencias y aprobar o rechazar documentos | Sesión y Supabase independientes; exportaciones con checkpoints |
+| Seguimiento | Tableros de Comercial y Mantenimiento y plantillas de correo | Acceso propio al módulo |
+| Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Avisos e historial en Supabase CRM |
 
-El portal `/` presenta los módulos. Las áreas protegidas tienen entradas independientes: `/login`, `/prospeccion-login`, `/bi-login`, `/redes/login` y `/facturas/login`.
+### Servicio técnico
+
+Entra en **Gestión de estados → Servicio técnico → Avisos**. El recorrido es
+**Recibido → Cobertura revisada → Visita agendada → Parte cerrado**.
+
+La oficina comprueba el contrato o la garantía y registra el coste de material,
+mano de obra y desplazamiento, junto con la disponibilidad del repuesto. El parte
+recoge el trabajo realizado, los minutos y las piezas utilizadas. Supabase guarda
+cada cambio de estado junto con el historial.
+
+Configura primero la [migración de Avisos](supabase/migrations/202611250001_service_notices.sql)
+en el proyecto Supabase del CRM y las variables de servidor descritas en
+[Instalación y configuración](docs/SETUP.md#gestión-de-estados-y-servicio-técnico).
+En esta versión las comprobaciones de cobertura y stock y la asignación de la
+visita se hacen manualmente. Quedan pendientes las integraciones con inventario,
+calendario y centralita, además de las fotos y la firma en el parte.
+
+El portal `/` presenta los módulos. Las áreas protegidas tienen entradas independientes: `/login`, `/prospeccion-login`, `/bi-login`, `/redes/login`, `/facturas/login` y `/gestion-estados/login`.
 
 ## Arquitectura
 
@@ -35,6 +54,8 @@ El portal `/` presenta los módulos. Las áreas protegidas tienen entradas indep
 flowchart LR
     Browser[Next.js / React / TypeScript] --> API[API Express]
     API --> CRM[(Supabase CRM)]
+    Browser --> Server[Servidor Next.js / Servicio técnico]
+    Server --> CRM
     API --> Tickets[(Supabase Tickets)]
     API --> ERP[(SQL Server / ERP)]
     API --> Providers[Microsoft 365 / Prospeo / OpenAI]
@@ -42,7 +63,7 @@ flowchart LR
     N8N -->|Resultados autenticados| API
 ```
 
-Las integraciones sensibles se ejecutan en el backend. La interfaz utiliza cookies `HttpOnly`; la API valida firma, caducidad y área de acceso. Las campañas se revisan antes de ejecutarse y sus resultados se registran mediante callbacks.
+Express y el servidor de Next.js ejecutan las integraciones que requieren credenciales. La interfaz utiliza cookies `HttpOnly`; la API valida firma, caducidad y área de acceso. Las campañas se revisan antes de ejecutarse y sus resultados se registran mediante callbacks.
 
 ## Tecnologías
 

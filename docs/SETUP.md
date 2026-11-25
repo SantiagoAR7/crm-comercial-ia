@@ -79,10 +79,12 @@ habilita la recuperación, `WORKFLOW_ACCESS_RECOVERY_EMAIL` desde su archivo de
 entorno. El hash se genera con `hashPassword` en `backend/src/services/account-store.js`.
 La recuperación por correo usa las variables de Microsoft Graph del backend.
 
-Servicio técnico guarda los avisos y el historial en SQLite. El volumen
-`service-notice-data` conserva esos datos entre actualizaciones del contenedor.
-Inclúyelo en las copias de seguridad. Para una prueba local puedes apuntar
-`SERVICE_NOTICE_DB_PATH` a un archivo de prueba fuera del repositorio.
+Para Servicio técnico, aplica `supabase/migrations/202611250001_service_notices.sql`
+al proyecto Supabase del CRM. Configura en el entorno de Compose
+`SERVICE_SUPABASE_URL` y `SERVICE_SUPABASE_SECRET_KEY` con la URL y la clave
+privada de ese proyecto. El frontend solo usa estas variables en el servidor.
+La migración restringe el acceso a la cuenta de servicio y guarda el historial
+en la misma transacción que cada cambio de etapa.
 
 La primera versión registra la comprobación manual de cobertura, importe y
 disponibilidad. La asignación y el cierre son acciones del equipo desde el CRM.

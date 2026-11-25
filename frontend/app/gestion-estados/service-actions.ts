@@ -34,11 +34,11 @@ export async function saveNotice(form: FormData) {
       coverage: coverages[0], reference: '', material: null, labor: null, travel: null,
       part: '', stock: availability[0], technician: '', appointment: '', report: '', minutes: null, usedParts: '',
     };
-    insertNotice(notice);
+    await insertNotice(notice);
     redirect(detail);
   }
 
-  const notice = getNotice(id);
+  const notice = await getNotice(id);
   if (!notice) redirect(base + '&error=aviso');
   if (step !== String(notice.stage)) redirect(detail + '&error=estado');
 
@@ -71,6 +71,6 @@ export async function saveNotice(form: FormData) {
     redirect(detail + '&error=estado');
   }
   notice.stage += 1;
-  if (!advanceNotice(notice)) redirect(detail + '&error=estado');
+  if (!await advanceNotice(notice)) redirect(detail + '&error=estado');
   redirect(detail);
 }
