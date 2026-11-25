@@ -1,3 +1,4 @@
+import { makeRecoveryRouter } from './routes/account-recovery.js';
 import 'dotenv/config';
 import {startSocialSync} from './services/social-sync.js';
 import cors from 'cors';
@@ -48,6 +49,7 @@ app.use('/api/tickets', requireTicketsAuth, ticketsRouter);
 app.use('/api/social/auth', socialAuthRouter);
 app.use('/api/social-publications', (req, res, next) => req.path === '/webhook/n8n' ? next() : requireSocialAuth(req, res, next), socialPublicationsRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/account-recovery', makeRecoveryRouter());
 app.use('/api/bi/auth', biAuthRouter);
 app.use('/api/bi', requireBiAuth, biRouter);
 app.use('/api/prospecting/auth', prospectingAuthRouter);

@@ -1,0 +1,4 @@
+import Link from 'next/link';
+export default function RecoveryLinks({profile}:{profile:string}){
+ return <div className="mt-5 space-y-3 border-t border-slate-200 pt-4 text-center text-xs"><div className="flex flex-wrap justify-center gap-x-4 gap-y-2"><Link className="font-semibold text-blue-800 underline underline-offset-4 hover:text-blue-600" href={'/recuperar-acceso?modo=username&modulo='+profile}>Olvidé mi usuario</Link><Link className="font-semibold text-blue-800 underline underline-offset-4 hover:text-blue-600" href={'/recuperar-acceso?modo=password&modulo='+profile}>Olvidé mi contraseña</Link></div><span role="link" aria-disabled="true" title="transformaciondigital@davofrio.com · Próximamente" className="inline-block cursor-default text-slate-500 underline decoration-dotted underline-offset-4">Contactar con administración</span><p className="text-[10px] text-slate-400">El contacto con administración estará disponible próximamente.</p></div>;
+}

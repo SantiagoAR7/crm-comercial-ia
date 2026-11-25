@@ -10,14 +10,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
+  const standalone = ['/gestion-estados', '/recuperar-acceso'].some(path =>
+    pathname === path || pathname.startsWith(path + '/')
+  );
 
   useEffect(() => {
-    if (pathname === '/' || pathname === '/redes' || pathname.startsWith('/redes/') || pathname === '/facturas' || pathname.startsWith('/facturas/') || pathname === '/login' || pathname === '/prospeccion-login' || pathname.startsWith('/prospeccion')) return;
+    if (standalone || pathname === '/' || pathname === '/redes' || pathname.startsWith('/redes/') || pathname === '/facturas' || pathname.startsWith('/facturas/') || pathname === '/login' || pathname === '/prospeccion-login' || pathname.startsWith('/prospeccion')) return;
     fetch('/api/auth/session', { credentials: 'same-origin' })
       .then((response) => response.ok ? response.json() : null)
       .then((body) => setEmail(body?.data?.email || ''))
       .catch(() => undefined);
-  }, [pathname]);
+  }, [pathname, standalone]);
+
+  if (standalone) return <>{children}</>;
 
   if (pathname === '/' || pathname === '/redes' || pathname.startsWith('/redes/') || pathname === '/facturas' || pathname.startsWith('/facturas/') || pathname === '/login' || pathname === '/bi-login' || pathname.startsWith('/bi') || pathname === '/prospeccion-login' || pathname.startsWith('/prospeccion')) {
     return <main className="min-h-screen">{children}</main>;

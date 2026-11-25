@@ -23,6 +23,8 @@ services:
         NEXT_PUBLIC_API_URL: "https://crm.iadavofrio.com"
     restart: unless-stopped
     container_name: davofrio-crm-web
+    environment:
+      WORKFLOW_SESSION_SECRET: ${WORKFLOW_SESSION_SECRET:-}
     depends_on:
       - crm-api
     networks:

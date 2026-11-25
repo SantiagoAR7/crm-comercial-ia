@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, BriefcaseBusiness, FileCheck2, Network, Search } from 'lucide-react';
+import { BarChart3, BriefcaseBusiness, FileCheck2, Network, Search, Workflow } from 'lucide-react';
 
 const modules = [
   {
@@ -43,6 +43,15 @@ const modules = [
     accent: 'from-emerald-500 to-emerald-800',
     badge: 'Administración',
   },
+  {
+    href: '/gestion-estados',
+    title: 'Gestión de estados y automatizaciones',
+    description: 'Tableros por departamento, reglas por estado y seguimiento de correos.',
+    icon: Workflow,
+    accent: 'from-blue-600 to-indigo-900',
+    badge: 'Automatización',
+  },
+
 ];
 
 export default function ModulesPage() {
