@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { hasSession } from './session';
 import { advanceNotice, availability, coverages, getNotice, insertNotice, type ServiceNotice } from './service-store';
 
+import { charges, coveragePayers } from './service-coverage';
+
 const base = '/gestion-estados?seccion=servicio-tecnico';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 
@@ -50,12 +52,22 @@ export async function saveNotice(form: FormData) {
     if (!(coverages as readonly string[]).includes(coverage) || coverage === coverages[0]
       || !(availability as readonly string[]).includes(stock) || !reference
       || (stock !== availability[0] && !part)) redirect(detail + '&error=cobertura');
-    const amounts = ['material', 'labor', 'travel'] as const;
-    if (amounts.some(name => form.get(name) && cents(form, name) === null)) redirect(detail + '&error=importe');
-    const labor = cents(form, 'labor');
-    const travel = cents(form, 'travel');
-    if (coverage === 'Contrato' && (labor !== 0 || travel !== 0)) redirect(detail + '&error=contrato');
-    Object.assign(notice, { coverage, reference, stock, part, material: cents(form, 'material'), labor, travel });
+    const payers = coveragePayers(coverage, form);
+    if (!payers) redirect(detail + '&error=cobertura');
+    const stockLocation = read(form, 'stockLocation');
+    if (stock === 'Disponible' && !stockLocation) redirect(detail + '&error=almacen');
+    const amounts = { material: null, labor: null, travel: null } as Record<typeof charges[number], number | null>;
+    for (const charge of charges) {
+      if (payers[charge] !== 'customer') continue;
+      const amount = cents(form, charge);
+      if (read(form, charge, 100) && amount === null) redirect(detail + '&error=importe');
+      amounts[charge] = amount;
+    }
+    Object.assign(notice, {
+      coverage, reference, stock, part, payers,
+      stockLocation: stock === 'Disponible' ? stockLocation : '',
+      ...amounts,
+    });
   } else if (notice.stage === 1) {
     const technician = read(form, 'technician');
     const appointment = read(form, 'appointment');

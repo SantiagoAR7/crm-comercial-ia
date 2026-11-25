@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
+import CoverageFields from './coverage-fields';
+import { chargeLabels, charges, payerLabels, priceForCustomer } from './service-coverage';
 import { saveNotice } from './service-actions';
-import { availability, coverages, getNotice, getNoticeHistory, listNotices, stages, type ServiceNotice } from './service-store';
+import { availability, getNotice, getNoticeHistory, listNotices, stages, type ServiceNotice } from './service-store';
 
 const base = '/gestion-estados?seccion=servicio-tecnico';
 const control = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
@@ -14,7 +16,7 @@ const errors: Record<string, string> = {
   estado: 'El aviso cambió de estado. Revisa la información actual.',
   cobertura: 'Confirma la cobertura y su referencia. Si has comprobado el stock, indica el repuesto.',
   importe: 'Introduce los importes en euros con un máximo de dos decimales.',
-  contrato: 'Para esta cobertura, indica 0 en mano de obra y desplazamiento.',
+  almacen: 'Indica en qué almacén o furgoneta está el repuesto disponible.',
   agenda: 'Indica el técnico y una fecha y hora válidas.',
   parte: 'Describe el trabajo e indica los minutos dedicados.',
 };
@@ -55,10 +57,7 @@ function NoticeForm({ id, step, title, children }: {
 }
 
 async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
-  const costs = [['Material', notice.material], ['Mano de obra', notice.labor], ['Desplazamiento', notice.travel]] as const;
-  const total = costs.every(([, amount]) => amount !== null)
-    ? money.format(costs.reduce((sum, [, amount]) => sum + (amount ?? 0), 0) / 100)
-    : 'Pendiente de confirmar';
+  const total = priceForCustomer(notice.payers, notice);
   return <div className="grid gap-5 xl:grid-cols-2">
     <article className={panel + ' space-y-3'}>
       <h2 className="text-xl font-bold">{notice.customer}</h2>
@@ -72,11 +71,19 @@ async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
         <dt>Cobertura</dt><dd>{notice.coverage}</dd>
         {notice.stage >= 1 && <>
           <dt>Referencia</dt><dd>{notice.reference}</dd>
-          <dt>Repuesto</dt><dd>{notice.part || '—'} · {notice.stock}</dd>
-          {costs.map(([label, amount]) => <div className="contents" key={label}>
-            <dt>{label}</dt><dd>{amount === null ? 'Pendiente' : money.format(amount / 100)}</dd>
-          </div>)}
-          <dt className="font-bold">Total</dt><dd className="font-bold">{total}</dd>
+          <dt>Repuesto</dt><dd>{notice.part || '—'} · {notice.stock}{notice.stockLocation && ' · ' + notice.stockLocation}</dd>
+          {charges.map(charge => {
+            const payer = notice.payers?.[charge];
+            const amount = notice[charge];
+            return <div className="contents" key={charge}>
+              <dt>{chargeLabels[charge]}</dt>
+              <dd>{payer && payer !== 'customer'
+                ? payerLabels[payer]
+                : amount === null ? 'Importe pendiente' : money.format(amount / 100)}</dd>
+            </div>;
+          })}
+          <dt className="font-bold">Total para el cliente</dt>
+          <dd className="font-bold">{total === null ? 'Pendiente de confirmar' : money.format(total / 100)}</dd>
         </>}
         {notice.stage >= 2 && <>
           <dt>Técnico</dt><dd>{notice.technician}</dd>
@@ -96,16 +103,11 @@ async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
       </ol>
     </article>
     {notice.stage === 0 && <NoticeForm id={notice.id} step="0" title="Revisar cobertura y precio">
-      <Selection name="coverage" label="Cobertura" options={coverages} />
-      <Field name="reference" label="Confirmación de contrato, fabricante o motivo de exclusión" required />
+      <CoverageFields />
+      <Field name="reference" label="Referencia del contrato, autorización del fabricante o motivo de exclusión" required />
       <Field name="part" label="Referencia del repuesto" />
       <Selection name="stock" label="Disponibilidad comprobada" options={availability} />
-      <p className="text-sm text-slate-600">Indica 0 € para conceptos cubiertos. Deja vacío el importe que esté pendiente de confirmar.</p>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field name="material" label="Material (€)" maxLength={10} />
-        <Field name="labor" label="Mano de obra (€)" maxLength={10} />
-        <Field name="travel" label="Desplazamiento (€)" maxLength={10} />
-      </div>
+      <Field name="stockLocation" label="Almacén o furgoneta si hay existencias" />
     </NoticeForm>}
     {notice.stage === 1 && <NoticeForm id={notice.id} step="1" title="Agendar la visita">
       <Field name="technician" label="Técnico" required />

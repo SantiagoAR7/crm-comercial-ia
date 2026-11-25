@@ -34,8 +34,11 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 Entra en **Gestión de estados → Servicio técnico → Avisos**. El recorrido es
 **Recibido → Cobertura revisada → Visita agendada → Parte cerrado**.
 
-La oficina comprueba el contrato o la garantía y registra el coste de material,
-mano de obra y desplazamiento, junto con la disponibilidad del repuesto. El parte
+La oficina verifica la cobertura al abrir el aviso. Cuando el contrato cubre
+mano de obra y desplazamiento, el cliente paga el material. Fuera de cobertura,
+se desglosan los tres costes. Para garantías de fabricante se confirma quién
+asume cada concepto antes de comunicar el total. Si hay repuesto, se registra
+el almacén o la furgoneta donde se comprobó su disponibilidad. El parte
 recoge el trabajo realizado, los minutos y las piezas utilizadas. Supabase guarda
 cada cambio de estado junto con el historial.
 

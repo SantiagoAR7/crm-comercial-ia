@@ -1,5 +1,7 @@
+import type { Payers } from './service-coverage';
+export { coverages } from './service-options';
+
 export const stages = ['Recibido', 'Cobertura revisada', 'Visita agendada', 'Parte cerrado'] as const;
-export const coverages = ['Pendiente de verificar', 'Contrato', 'Garantía de fabricante', 'Fuera de cobertura'] as const;
 export const availability = ['Por comprobar', 'Disponible', 'Sin existencias'] as const;
 
 export type ServiceNotice = {
@@ -12,6 +14,8 @@ export type ServiceNotice = {
   issue: string;
   origin: string;
   coverage: string;
+  payers?: Payers;
+  stockLocation?: string;
   reference: string;
   material: number | null;
   labor: number | null;
