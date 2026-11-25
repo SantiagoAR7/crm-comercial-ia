@@ -18,6 +18,9 @@ export type ServiceNotice = {
   payers?: Payers;
   stockLocation?: string;
   reference: string;
+  coverageFrom?: string;
+  coverageUntil?: string;
+  manufacturer?: string;
   material: number | null;
   labor: number | null;
   travel: number | null;
@@ -133,6 +136,16 @@ export async function listEquipmentNotices(id: string, exclude: string, offset: 
     id: 'neq.' + exclude, order: 'created_at.desc,id.desc', limit: '11', offset: String(offset),
   });
   return rows.map(row => ({ ...toNotice(row), createdAt: row.created_at }));
+}
+
+export async function findRecentEquipmentContract(id: string, today: string) {
+  const [row] = await query<NoticeRow>('service_notices', {
+    select: 'id,stage,record', 'record->>equipmentId': 'eq.' + id,
+    'record->>coverage': 'eq.Contrato', 'record->>coverageFrom': 'lte.' + today,
+    or: '(record->>coverageUntil.eq."",record->>coverageUntil.gte.' + today + ')',
+    stage: 'gte.1', order: 'created_at.desc,id.desc', limit: '1',
+  });
+  return row ? toNotice(row) : null;
 }
 
 export async function linkNoticeEquipment(notice: ServiceNotice, equipment: Equipment) {

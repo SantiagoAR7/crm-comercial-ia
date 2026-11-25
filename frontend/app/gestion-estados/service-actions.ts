@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { hasSession } from './session';
 import { advanceNotice, availability, coverages, equipmentLabel, getEquipment, getNotice, insertNotice, linkNoticeEquipment, type ServiceNotice } from './service-store';
 
-import { charges, coveragePayers } from './service-coverage';
+import { charges, coveragePayers, validCoverageDate } from './service-coverage';
 
 const base = '/gestion-estados?seccion=servicio-tecnico';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
@@ -63,6 +63,17 @@ export async function saveNotice(form: FormData) {
     if (!(coverages as readonly string[]).includes(coverage) || coverage === coverages[0]
       || !(availability as readonly string[]).includes(stock) || !reference
       || (stock !== availability[0] && !part)) redirect(detail + '&error=cobertura');
+    const coverageFrom = coverage === 'Contrato' ? read(form, 'coverageFrom', 20) : '';
+    const coverageUntil = coverage === 'Contrato' ? read(form, 'coverageUntil', 20) : '';
+    const manufacturer = coverage === 'Garantía de fabricante' ? read(form, 'manufacturer') : '';
+    if (coverage === 'Contrato') {
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+      if (!validCoverageDate(coverageFrom) || coverageFrom > today
+        || (coverageUntil && (!validCoverageDate(coverageUntil) || coverageUntil < today))) {
+        redirect(detail + '&error=vigencia');
+      }
+    }
+    if (coverage === 'Garantía de fabricante' && !manufacturer) redirect(detail + '&error=fabricante');
     const payers = coveragePayers(coverage, form);
     if (!payers) redirect(detail + '&error=cobertura');
     const stockLocation = read(form, 'stockLocation');
@@ -75,7 +86,7 @@ export async function saveNotice(form: FormData) {
       amounts[charge] = amount;
     }
     Object.assign(notice, {
-      coverage, reference, stock, part, payers,
+      coverage, reference, coverageFrom, coverageUntil, manufacturer, stock, part, payers,
       stockLocation: stock === 'Disponible' ? stockLocation : '',
       ...amounts,
     });

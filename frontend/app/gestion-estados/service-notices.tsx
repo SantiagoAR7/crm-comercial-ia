@@ -3,7 +3,7 @@ import Link from 'next/link';
 import CoverageFields from './coverage-fields';
 import { chargeLabels, charges, payerLabels, priceForCustomer } from './service-coverage';
 import { saveNotice } from './service-actions';
-import { availability, equipmentLabel, getEquipment, getNotice, getNoticeHistory, listEquipmentNotices, listNotices, searchEquipment, stages, type ServiceNotice } from './service-store';
+import { availability, equipmentLabel, findRecentEquipmentContract, getEquipment, getNotice, getNoticeHistory, listEquipmentNotices, listNotices, searchEquipment, stages, type ServiceNotice } from './service-store';
 
 const base = '/gestion-estados?seccion=servicio-tecnico';
 const control = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
@@ -16,6 +16,8 @@ const errors: Record<string, string> = {
   aviso: 'El aviso no está disponible.',
   estado: 'El aviso cambió de estado. Revisa la información actual.',
   cobertura: 'Confirma la cobertura y su referencia. Si has comprobado el stock, indica el repuesto.',
+  vigencia: 'Indica las fechas de un contrato vigente hoy. La fecha final se puede dejar vacía si el contrato es indefinido.',
+  fabricante: 'Indica el fabricante y su referencia de autorización.',
   importe: 'Introduce los importes en euros con un máximo de dos decimales.',
   almacen: 'Indica en qué almacén o furgoneta está el repuesto disponible.',
   agenda: 'Indica el técnico y una fecha y hora válidas.',
@@ -94,21 +96,43 @@ async function EquipmentSearch({ search, noticeId }: { search?: string; noticeId
   </section>;
 }
 
+function CoverageEvidence({ notice }: { notice: ServiceNotice }) {
+  const formatDate = (date: string) => date.split('-').reverse().join('/');
+  return <>
+    {notice.coverageFrom && <span> · Vigencia registrada desde {formatDate(notice.coverageFrom)} hasta {
+      notice.coverageUntil ? formatDate(notice.coverageUntil) : 'fecha indefinida'
+    }</span>}
+    {notice.manufacturer && <span> · {notice.manufacturer}</span>}
+  </>;
+}
+
 async function EquipmentHistory({ notice, page }: { notice: ServiceNotice; page: number }) {
   if (!notice.equipmentId) return null;
-  const [equipment, previous] = await Promise.all([
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+  const [equipment, previous, contract] = await Promise.all([
     getEquipment(notice.equipmentId), listEquipmentNotices(notice.equipmentId, notice.id, page * 10),
+    findRecentEquipmentContract(notice.equipmentId, today),
   ]);
   const href = base + '&aviso=' + notice.id + '&paginaEquipo=';
+  const contractPayers = contract?.payers;
   return <section className={panel + ' space-y-3'}>
     <h3 className="font-bold">Equipo e historial de intervenciones</h3>
     {equipment ? <EquipmentSummary equipment={equipment} /> : <p>La ficha del equipo no está disponible.</p>}
+    {contract && <div className="rounded-lg bg-slate-50 p-3 text-sm">
+      <p className="font-semibold">Último contrato registrado con vigencia en la fecha actual</p>
+      <p><Link className="text-blue-900 underline" href={base + '&aviso=' + contract.id}>{contract.reference}</Link>
+        <CoverageEvidence notice={contract} />
+      </p>
+      {contractPayers && <ul className="mt-1 flex flex-wrap gap-x-3">
+        {charges.map(charge => <li key={charge}>{chargeLabels[charge]} · {payerLabels[contractPayers[charge]]}</li>)}
+      </ul>}
+    </div>}
     {previous.length ? <ul className="divide-y divide-slate-200 text-sm">
       {previous.slice(0, 10).map(item => <li key={item.id} className="space-y-1 py-2">
         <Link className="font-semibold text-blue-900 underline" href={base + '&aviso=' + item.id}>
           {new Date(item.createdAt).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })} · {stages[item.stage]} · {item.issue}
         </Link>
-        {item.reference && <p>{item.coverage} · {item.reference}</p>}
+        {item.reference && <p>{item.coverage} · {item.reference}<CoverageEvidence notice={item} /></p>}
         {item.stage === 3 && <p className="whitespace-pre-wrap">{item.report}</p>}
       </li>)}
     </ul> : <p>No hay otros avisos vinculados en esta página.</p>}
@@ -133,7 +157,7 @@ async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
         <dt>Origen</dt><dd>{notice.origin || '—'}</dd>
         <dt>Cobertura</dt><dd>{notice.coverage}</dd>
         {notice.stage >= 1 && <>
-          <dt>Referencia</dt><dd>{notice.reference}</dd>
+          <dt>Referencia</dt><dd>{notice.reference}<CoverageEvidence notice={notice} /></dd>
           <dt>Repuesto</dt><dd>{notice.part || '—'} · {notice.stock}{notice.stockLocation && ' · ' + notice.stockLocation}</dd>
           {charges.map(charge => {
             const payer = notice.payers?.[charge];
@@ -167,7 +191,6 @@ async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
     </article>
     {notice.stage === 0 && <NoticeForm id={notice.id} step="0" title="Revisar cobertura y precio">
       <CoverageFields />
-      <Field name="reference" label="Referencia del contrato, autorización del fabricante o motivo de exclusión" required />
       <Field name="part" label="Referencia del repuesto" />
       <Selection name="stock" label="Disponibilidad comprobada" options={availability} />
       <Field name="stockLocation" label="Almacén o furgoneta si hay existencias" />
