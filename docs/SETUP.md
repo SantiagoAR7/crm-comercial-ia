@@ -69,3 +69,20 @@ Web: `http://localhost:3000`. API: `http://localhost:4000`. `/api/health` indica
 `docker-compose.production.yml` es específico del entorno actual: hosts DAVOFRIO, red externa `dokploy-network`, Traefik y `backend/.env.production`. No es un despliegue portátil ni debe ejecutarse como demo sin adaptar esos requisitos.
 
 Organizar el repositorio no despliega cambios. Antes de actualizar producción, valida en un entorno aislado las credenciales, el secreto del webhook y los flujos de n8n correspondientes.
+
+## Gestión de estados y Servicio técnico
+
+El módulo usa su propio inicio de sesión. Configura `WORKFLOW_SESSION_SECRET`
+con un secreto de al menos 32 caracteres en el entorno de Compose. El backend
+lee `WORKFLOW_ACCESS_USERNAME`, `WORKFLOW_ACCESS_PASSWORD_HASH` y, si se
+habilita la recuperación, `WORKFLOW_ACCESS_RECOVERY_EMAIL` desde su archivo de
+entorno. El hash se genera con `hashPassword` en `backend/src/services/account-store.js`.
+La recuperación por correo usa las variables de Microsoft Graph del backend.
+
+Servicio técnico guarda los avisos y el historial en SQLite. El volumen
+`service-notice-data` conserva esos datos entre actualizaciones del contenedor.
+Inclúyelo en las copias de seguridad. Para una prueba local puedes apuntar
+`SERVICE_NOTICE_DB_PATH` a un archivo de prueba fuera del repositorio.
+
+La primera versión registra la comprobación manual de cobertura, importe y
+disponibilidad. La asignación y el cierre son acciones del equipo desde el CRM.

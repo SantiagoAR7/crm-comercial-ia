@@ -23,7 +23,7 @@ export async function hasSession() {
   const expected = sign(expires + ':' + version);
   if (!expected || !signature || !equals(signature, expected)) return false;
   try {
-    const response = await fetch('http://crm-api:4000/api/account-recovery/workflow-version', {cache:'no-store',signal:AbortSignal.timeout(15000)});
+    const response = await fetch((process.env.WORKFLOW_INTERNAL_API_URL || 'http://crm-api:4000') + '/api/account-recovery/workflow-version', {cache:'no-store',signal:AbortSignal.timeout(15000)});
     return response.ok && (await response.json()).version === version;
   } catch { return false; }
 }

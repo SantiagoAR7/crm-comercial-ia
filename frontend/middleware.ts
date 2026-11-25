@@ -5,7 +5,7 @@ const biCookieName = 'bi_session';
 const prospectingCookieName = 'prospecting_session';
 
 export function middleware(request: NextRequest) {
-  if (['/gestion-estados', '/recuperar-acceso'].some(path =>
+  if (['/gestion-estados', '/recuperar-acceso', '/email-plantillas'].some(path =>
     request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(path + '/')
   )) return NextResponse.next();
 

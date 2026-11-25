@@ -5,13 +5,14 @@ import { redirect } from 'next/navigation';
 import { logout } from './actions';
 import { hasSession } from './session';
 import Board from './board';
+import ServiceNotices from './service-notices';
 
 const departments = [
   { id: 'comercial', name: 'Comercial' },
   { id: 'mantenimiento', name: 'Mantenimiento' },
 ] as const;
 
-export default async function WorkflowPage({ searchParams }: { searchParams: Promise<{ departamento?: string; seccion?: string }> }) {
+export default async function WorkflowPage({ searchParams }: { searchParams: Promise<{ departamento?: string; seccion?: string; aviso?: string; nuevo?: string; error?: string }> }) {
   if (!await hasSession()) redirect('/gestion-estados/login');
   const params = await searchParams;
   const technicalService = params.seccion === 'servicio-tecnico';
@@ -59,12 +60,7 @@ export default async function WorkflowPage({ searchParams }: { searchParams: Pro
           <h1 className="mt-2 text-2xl font-bold">{technicalService ? 'Servicio técnico' : 'Gestión de estados y automatizaciones'}</h1></div>
         <form action={logout}><button className="rounded-lg border border-white/30 px-4 py-2">Cerrar sesión</button></form>
       </header>
-      {technicalService ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-bold">Avisos</h2>
-          <p className="mt-2 text-sm text-slate-600">El módulo de avisos está en preparación.</p>
-        </section>
-      ) : <Board key={selected} department={selected} label={selected === 'comercial' ? departments[0].name : departments[1].name} />}
+      {technicalService ? <ServiceNotices noticeId={params.aviso} create={params.nuevo === '1'} error={params.error} /> : <Board key={selected} department={selected} label={selected === 'comercial' ? departments[0].name : departments[1].name} />}
     </div>
     </main>
   </div>;

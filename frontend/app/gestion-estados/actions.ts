@@ -8,7 +8,7 @@ export async function login(form: FormData) {
   const expires = String(Date.now() + duration * 1000);
   let version = '';
   try {
-    const response = await fetch('http://crm-api:4000/api/account-recovery/workflow-login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.get('username'),password:form.get('password')}),cache:'no-store',signal:AbortSignal.timeout(15000)});
+    const response = await fetch((process.env.WORKFLOW_INTERNAL_API_URL || 'http://crm-api:4000') + '/api/account-recovery/workflow-login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.get('username'),password:form.get('password')}),cache:'no-store',signal:AbortSignal.timeout(15000)});
     if (response.ok) version = (await response.json()).version || '';
   } catch {}
   const signature = version ? sign(expires + ':' + version) : null;
