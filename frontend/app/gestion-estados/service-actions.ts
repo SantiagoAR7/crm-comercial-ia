@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { hasSession } from './session';
-import { advanceNotice, availability, coverages, getNotice, insertNotice, type ServiceNotice } from './service-store';
+import { advanceNotice, availability, coverages, equipmentLabel, getEquipment, getNotice, insertNotice, linkNoticeEquipment, type ServiceNotice } from './service-store';
 
 import { charges, coveragePayers } from './service-coverage';
 
@@ -27,12 +27,17 @@ export async function saveNotice(form: FormData) {
   const detail = base + '&aviso=' + id;
   const step = read(form, 'step', 6);
   if (step === 'create') {
-    const customer = read(form, 'customer');
+    const equipmentId = read(form, 'equipmentId', 36);
+    const equipment = equipmentId ? await getEquipment(equipmentId) : null;
+    if (equipmentId && !equipment) redirect(base + '&nuevo=1&error=equipo');
+    const customer = equipment?.customer_name || read(form, 'customer');
     const issue = read(form, 'issue', 2000);
     if (!customer || !issue) redirect(base + '&nuevo=1&error=datos');
     const notice: ServiceNotice = {
       id, stage: 0, customer, issue, phone: read(form, 'phone', 40),
-      equipment: read(form, 'equipment'), serial: read(form, 'serial'), origin: read(form, 'origin'),
+      equipment: equipment ? equipmentLabel(equipment) : read(form, 'equipment'),
+      serial: equipment ? equipment.serial_number || '' : read(form, 'serial'),
+      equipmentId: equipment?.id, origin: read(form, 'origin'),
       coverage: coverages[0], reference: '', material: null, labor: null, travel: null,
       part: '', stock: availability[0], technician: '', appointment: '', report: '', minutes: null, usedParts: '',
     };
@@ -42,6 +47,12 @@ export async function saveNotice(form: FormData) {
 
   const notice = await getNotice(id);
   if (!notice) redirect(base + '&error=aviso');
+  if (step === 'link') {
+    const equipment = await getEquipment(read(form, 'equipmentId', 36));
+    if (!equipment || notice.stage !== 0 && notice.equipmentId) redirect(detail + '&error=equipo');
+    if (!await linkNoticeEquipment(notice, equipment)) redirect(detail + '&error=estado');
+    redirect(detail);
+  }
   if (step !== String(notice.stage)) redirect(detail + '&error=estado');
 
   if (notice.stage === 0) {

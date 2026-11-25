@@ -12,7 +12,7 @@ const departments = [
   { id: 'mantenimiento', name: 'Mantenimiento' },
 ] as const;
 
-export default async function WorkflowPage({ searchParams }: { searchParams: Promise<{ departamento?: string; seccion?: string; aviso?: string; nuevo?: string; error?: string }> }) {
+export default async function WorkflowPage({ searchParams }: { searchParams: Promise<{ departamento?: string; seccion?: string; aviso?: string; nuevo?: string; error?: string; equipo?: string; buscarEquipo?: string; paginaEquipo?: string }> }) {
   if (!await hasSession()) redirect('/gestion-estados/login');
   const params = await searchParams;
   const technicalService = params.seccion === 'servicio-tecnico';
@@ -60,7 +60,7 @@ export default async function WorkflowPage({ searchParams }: { searchParams: Pro
           <h1 className="mt-2 text-2xl font-bold">{technicalService ? 'Servicio técnico' : 'Gestión de estados y automatizaciones'}</h1></div>
         <form action={logout}><button className="rounded-lg border border-white/30 px-4 py-2">Cerrar sesión</button></form>
       </header>
-      {technicalService ? <ServiceNotices noticeId={params.aviso} create={params.nuevo === '1'} error={params.error} /> : <Board key={selected} department={selected} label={selected === 'comercial' ? departments[0].name : departments[1].name} />}
+      {technicalService ? <ServiceNotices noticeId={params.aviso} create={params.nuevo === '1'} error={params.error} equipmentId={params.equipo} search={params.buscarEquipo} historyPage={params.paginaEquipo} /> : <Board key={selected} department={selected} label={selected === 'comercial' ? departments[0].name : departments[1].name} />}
     </div>
     </main>
   </div>;

@@ -10,6 +10,7 @@ export type ServiceNotice = {
   customer: string;
   phone: string;
   equipment: string;
+  equipmentId?: string;
   serial: string;
   issue: string;
   origin: string;
@@ -84,10 +85,67 @@ export async function insertNotice({ id, stage, ...record }: ServiceNotice) {
 export async function advanceNotice({ id, stage, ...record }: ServiceNotice) {
   const rows = await query<{ id: string }>('service_notices', {
     id: 'eq.' + id, stage: 'eq.' + (stage - 1), select: 'id',
+    'record->>equipmentId': record.equipmentId ? 'eq.' + record.equipmentId : 'is.null',
   }, {
     method: 'PATCH',
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ stage, record }),
+  });
+  return rows.length === 1;
+}
+
+type Equipment = {
+  id: string;
+  customer_name: string | null;
+  normalized_phone: string | null;
+  brand: string | null;
+  model: string | null;
+  equipment_type: string | null;
+  serial_number: string | null;
+  warranty_until: string | null;
+};
+
+const equipmentFields = 'id,customer_name,normalized_phone,brand,model,equipment_type,serial_number,warranty_until';
+
+export function equipmentLabel(equipment: Equipment) {
+  return [equipment.brand, equipment.model].filter(Boolean).join(' ') || equipment.equipment_type || 'Equipo';
+}
+
+export async function searchEquipment(search: string) {
+  const term = search.trim().slice(0, 100).replace(/[%*_"\\]/g, '').trim();
+  if (term.length < 2) return [];
+  return query<Equipment>('installations', {
+    select: equipmentFields,
+    or: '(customer_name.ilike."%' + term + '%",serial_number.ilike."%' + term + '%")',
+    order: 'customer_name.asc,id.asc', limit: '25',
+  });
+}
+
+export async function getEquipment(id: string) {
+  if (!uuid.test(id)) return null;
+  const [equipment] = await query<Equipment>('installations', { select: equipmentFields, id: 'eq.' + id });
+  return equipment ?? null;
+}
+
+export async function listEquipmentNotices(id: string, exclude: string, offset: number) {
+  const rows = await query<NoticeRow & { created_at: string }>('service_notices', {
+    select: 'id,stage,record,created_at', 'record->>equipmentId': 'eq.' + id,
+    id: 'neq.' + exclude, order: 'created_at.desc,id.desc', limit: '11', offset: String(offset),
+  });
+  return rows.map(row => ({ ...toNotice(row), createdAt: row.created_at }));
+}
+
+export async function linkNoticeEquipment(notice: ServiceNotice, equipment: Equipment) {
+  const { id, stage, ...record } = notice;
+  const rows = await query<{ id: string }>('service_notices', {
+    id: 'eq.' + id, stage: 'eq.' + stage, select: 'id',
+    'record->>equipmentId': record.equipmentId ? 'eq.' + record.equipmentId : 'is.null',
+  }, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ record: {
+      ...record, equipmentId: equipment.id, equipment: equipmentLabel(equipment), serial: equipment.serial_number || '',
+    } }),
   });
   return rows.length === 1;
 }

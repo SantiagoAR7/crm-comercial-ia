@@ -3,7 +3,7 @@ import Link from 'next/link';
 import CoverageFields from './coverage-fields';
 import { chargeLabels, charges, payerLabels, priceForCustomer } from './service-coverage';
 import { saveNotice } from './service-actions';
-import { availability, getNotice, getNoticeHistory, listNotices, stages, type ServiceNotice } from './service-store';
+import { availability, equipmentLabel, getEquipment, getNotice, getNoticeHistory, listEquipmentNotices, listNotices, searchEquipment, stages, type ServiceNotice } from './service-store';
 
 const base = '/gestion-estados?seccion=servicio-tecnico';
 const control = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
@@ -12,6 +12,7 @@ const primary = 'inline-block rounded-lg bg-blue-950 px-4 py-2 font-semibold tex
 const money = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const errors: Record<string, string> = {
   datos: 'Indica el cliente y describe la avería.',
+  equipo: 'El equipo no está disponible para vincularlo a este aviso.',
   aviso: 'El aviso no está disponible.',
   estado: 'El aviso cambió de estado. Revisa la información actual.',
   cobertura: 'Confirma la cobertura y su referencia. Si has comprobado el stock, indica el repuesto.',
@@ -54,6 +55,68 @@ function NoticeForm({ id, step, title, children }: {
     {children}
     <button className={primary}>Guardar</button>
   </form>;
+}
+
+function EquipmentSummary({ equipment }: { equipment: NonNullable<Awaited<ReturnType<typeof getEquipment>>> }) {
+  const warranty = equipment.warranty_until;
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+  return <div className="space-y-1 text-sm">
+    <p className="font-semibold">{equipmentLabel(equipment)} · {equipment.customer_name || 'Cliente sin nombre'}</p>
+    <p>Número de serie {equipment.serial_number || 'sin registrar'}</p>
+    <p>{warranty
+      ? `Garantía registrada hasta el ${warranty.slice(0, 10).split('-').reverse().join('/')} · ${warranty.slice(0, 10) >= today ? 'Fecha vigente' : 'Fecha vencida'}`
+      : 'Fecha de garantía sin registrar'}</p>
+    <p>Confirma el contrato o la autorización del fabricante antes de aprobar la cobertura.</p>
+  </div>;
+}
+
+async function EquipmentSearch({ search, noticeId }: { search?: string; noticeId?: string }) {
+  const results = search ? await searchEquipment(search) : [];
+  const destination = noticeId ? base + '&aviso=' + noticeId : base + '&nuevo=1';
+  return <section className={panel + ' space-y-3'}>
+    <h3 className="font-bold">Buscar equipo</h3>
+    <form method="get" action="/gestion-estados" className="flex flex-wrap items-end gap-2">
+      <input type="hidden" name="seccion" value="servicio-tecnico" />
+      <input type="hidden" name={noticeId ? 'aviso' : 'nuevo'} value={noticeId || '1'} />
+      <label className="min-w-56 flex-1 text-sm font-semibold">
+        Cliente o número de serie
+        <input className={control} name="buscarEquipo" minLength={2} maxLength={100} required defaultValue={search} />
+      </label>
+      <button className={primary}>Buscar</button>
+    </form>
+    {search && (results.length ? <ul className="divide-y divide-slate-200">
+      {results.map(item => <li key={item.id} className="py-2">
+        <Link className="text-blue-900 underline" href={destination + '&equipo=' + encodeURIComponent(item.id)}>
+          {item.customer_name || 'Cliente sin nombre'} · {equipmentLabel(item)} · {item.serial_number || 'Sin número de serie'}
+        </Link>
+      </li>)}
+    </ul> : <p>No se encontraron equipos.</p>)}
+  </section>;
+}
+
+async function EquipmentHistory({ notice, page }: { notice: ServiceNotice; page: number }) {
+  if (!notice.equipmentId) return null;
+  const [equipment, previous] = await Promise.all([
+    getEquipment(notice.equipmentId), listEquipmentNotices(notice.equipmentId, notice.id, page * 10),
+  ]);
+  const href = base + '&aviso=' + notice.id + '&paginaEquipo=';
+  return <section className={panel + ' space-y-3'}>
+    <h3 className="font-bold">Equipo e historial de intervenciones</h3>
+    {equipment ? <EquipmentSummary equipment={equipment} /> : <p>La ficha del equipo no está disponible.</p>}
+    {previous.length ? <ul className="divide-y divide-slate-200 text-sm">
+      {previous.slice(0, 10).map(item => <li key={item.id} className="space-y-1 py-2">
+        <Link className="font-semibold text-blue-900 underline" href={base + '&aviso=' + item.id}>
+          {new Date(item.createdAt).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })} · {stages[item.stage]} · {item.issue}
+        </Link>
+        {item.reference && <p>{item.coverage} · {item.reference}</p>}
+        {item.stage === 3 && <p className="whitespace-pre-wrap">{item.report}</p>}
+      </li>)}
+    </ul> : <p>No hay otros avisos vinculados en esta página.</p>}
+    <div className="flex gap-4 text-sm text-blue-900">
+      {page > 0 && <Link href={href + (page - 1)}>Anteriores</Link>}
+      {previous.length > 10 && <Link href={href + (page + 1)}>Siguientes</Link>}
+    </div>
+  </section>;
 }
 
 async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
@@ -121,10 +184,15 @@ async function NoticeDetails({ notice }: { notice: ServiceNotice }) {
   </div>;
 }
 
-export default async function ServiceNotices({ noticeId, create, error }: { noticeId?: string; create: boolean; error?: string }) {
+export default async function ServiceNotices({ noticeId, create, error, equipmentId, search, historyPage }: {
+  noticeId?: string; create: boolean; error?: string; equipmentId?: string; search?: string; historyPage?: string;
+}) {
   const notice = noticeId ? await getNotice(noticeId) : null;
   const notices = !create && !noticeId ? await listNotices() : [];
-  const message = error ? errors[error] : undefined;
+  const canLink = Boolean(notice && (notice.stage === 0 || !notice.equipmentId));
+  const selected = equipmentId && (create || canLink) ? await getEquipment(equipmentId) : null;
+  const page = /^\d{1,6}$/.test(historyPage || '') ? Number(historyPage) : 0;
+  const message = error ? errors[error] : equipmentId && !selected ? errors.equipo : undefined;
   return <section className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-xl font-bold">Avisos</h2>
@@ -133,16 +201,31 @@ export default async function ServiceNotices({ noticeId, create, error }: { noti
         : <Link className={primary} href={base + '&nuevo=1'}>Nuevo aviso</Link>}
     </div>
     {message && <p role="alert" className="rounded-lg bg-amber-100 p-3 text-amber-950">{message}</p>}
+    {(create || canLink) && <EquipmentSearch search={search} noticeId={create ? undefined : notice?.id} />}
+    {notice && selected && !create && <NoticeForm id={notice.id} step="link" title="Vincular equipo">
+      <input type="hidden" name="equipmentId" value={selected.id} />
+      <EquipmentSummary equipment={selected} />
+    </NoticeForm>}
     {create ? <NoticeForm id={randomUUID()} step="create" title="Registrar aviso">
+      {selected && <>
+        <input type="hidden" name="equipmentId" value={selected.id} />
+        <EquipmentSummary equipment={selected} />
+        <Link className="text-sm text-blue-900 underline" href={base + '&nuevo=1'}>Quitar selección</Link>
+      </>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field name="customer" label="Cliente" required />
+        {!selected?.customer_name && <Field name="customer" label="Cliente" required />}
         <Field name="phone" label="Teléfono" type="tel" maxLength={40} />
-        <Field name="equipment" label="Equipo o modelo" />
-        <Field name="serial" label="Número de serie" />
+        {!selected && <>
+          <Field name="equipment" label="Equipo o modelo" />
+          <Field name="serial" label="Número de serie" />
+        </>}
         <Selection name="origin" label="Origen" options={['Teléfono', 'WhatsApp', 'Fabricante', 'Otro']} />
       </div>
       <Notes name="issue" label="Avería comunicada" maxLength={2000} required />
-    </NoticeForm> : notice ? <NoticeDetails notice={notice} /> : (
+    </NoticeForm> : notice ? <>
+      <EquipmentHistory notice={notice} page={page} />
+      <NoticeDetails notice={notice} />
+    </> : (
       <div className={panel}>
         {notices.length ? <ul className="divide-y divide-slate-200">
           {notices.map(item => <li key={item.id}>
