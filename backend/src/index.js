@@ -1,3 +1,5 @@
+import { serviceDeliveryRouter } from './routes/service-delivery.js';
+import { makeRecoveryRouter } from './routes/account-recovery.js';
 import 'dotenv/config';
 import {startSocialSync} from './services/social-sync.js';
 import cors from 'cors';
@@ -37,6 +39,7 @@ app.use(cors({
 }));
 
 app.use('/api/ticket-integration', express.json({ limit: '12mb' }), ticketIntegrationRouter);
+app.use('/api/service-delivery', serviceDeliveryRouter);
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => {
@@ -48,6 +51,7 @@ app.use('/api/tickets', requireTicketsAuth, ticketsRouter);
 app.use('/api/social/auth', socialAuthRouter);
 app.use('/api/social-publications', (req, res, next) => req.path === '/webhook/n8n' ? next() : requireSocialAuth(req, res, next), socialPublicationsRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/account-recovery', makeRecoveryRouter());
 app.use('/api/bi/auth', biAuthRouter);
 app.use('/api/bi', requireBiAuth, biRouter);
 app.use('/api/prospecting/auth', prospectingAuthRouter);

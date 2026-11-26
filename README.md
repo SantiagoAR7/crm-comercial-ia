@@ -4,7 +4,7 @@
 
 **CRM, automatización e inteligencia de negocio para operaciones de climatización.**
 
-Aplicación web que reúne campañas comerciales con aprobación humana, prospección, consulta del ERP, seguimiento de publicaciones y revisión de tickets. Su objetivo es reducir los pasos manuales entre la información operativa y las acciones del equipo, conservando separación de accesos y trazabilidad.
+El portal de Davofrío reúne seguimiento comercial, avisos de servicio técnico, campañas, prospección, BI, publicaciones y gestión documental.
 
 El repositorio contiene el frontend, la API y parte de las migraciones. Los flujos de n8n, los datos del ERP y la configuración de proveedores se administran por separado. **No incluye una demo pública con datos ficticios ni un despliegue autónomo listo para usar.**
 
@@ -29,10 +29,30 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 | Seguimiento | Tableros de Comercial y Mantenimiento y plantillas de correo | Disponible en el portal de Davofrío |
 | Servicio técnico | Alta de avisos, revisión de cobertura y precio, asignación de visita y cierre del parte | Disponible en el portal de Davofrío. Avisos e historial en Supabase |
 
-El [módulo de Avisos](https://github.com/SantiagoAR7/crm-comercial-ia/tree/feat/servicio-tecnico)
-guarda los avisos y su historial en Supabase y está disponible desde **Servicio técnico → Avisos** en el portal de Davofrío.
+### Servicio técnico
 
-El portal `/` presenta los módulos. Las áreas protegidas tienen entradas independientes: `/login`, `/prospeccion-login`, `/bi-login`, `/redes/login` y `/facturas/login`. En el portal de Davofrío, Seguimiento y Servicio técnico se abren desde `/gestion-estados/login`.
+Abre **Servicio técnico** desde el portal corporativo. El módulo tiene inicio de
+sesión propio en `/servicio-tecnico/login`.
+
+- **Administración** gestiona avisos, equipos, garantías, contratos, preventivos
+  y agenda. Los presupuestos se guardan por versión y se pueden aceptar o
+  rechazar desde un enlace privado. La agenda requiere la aceptación de la
+  versión vigente cuando hay un importe a cargo del cliente.
+- **Técnicos** consultan las órdenes de su puesto. En el primer acceso de cada
+  jornada registran el nombre y los apellidos. El nombre se conserva aunque
+  cierren sesión y aparece en Administración → Técnicos. La fecha sigue el
+  horario de la agenda.
+- **Visitas y partes** reúnen tiempo, piezas, comprobaciones, fotos y firma.
+  Las visitas incompletas conservan su resultado y permiten agendar otra
+  visita en el mismo aviso. Administración puede confirmar o reprogramar por
+  correo y entregar el PDF desde la ficha del parte.
+- **Por facturar** permite revisar partes cerrados, comprobar qué está cubierto
+  y registrar manualmente la referencia de una factura emitida.
+
+El módulo se ejecuta en el VPS y guarda sus datos en Supabase. Las integraciones
+de inventario y emisión de facturas, incluida una posible conexión con Odoo,
+siguen pendientes. Consulta [Instalación y configuración](docs/SETUP.md#gestión-de-estados-y-servicio-técnico)
+para las variables y el estado del esquema.
 
 ## Arquitectura
 
@@ -40,6 +60,8 @@ El portal `/` presenta los módulos. Las áreas protegidas tienen entradas indep
 flowchart LR
     Browser[Next.js / React / TypeScript] --> API[API Express]
     API --> CRM[(Supabase CRM)]
+    Browser --> Server[Servidor Next.js / Servicio técnico]
+    Server --> CRM
     API --> Tickets[(Supabase Tickets)]
     API --> ERP[(SQL Server / ERP)]
     API --> Providers[Microsoft 365 / Prospeo / OpenAI]
@@ -47,7 +69,7 @@ flowchart LR
     N8N -->|Resultados autenticados| API
 ```
 
-Las integraciones sensibles se ejecutan en el backend. La interfaz utiliza cookies `HttpOnly`; la API valida firma, caducidad y área de acceso. Las campañas se revisan antes de ejecutarse y sus resultados se registran mediante callbacks.
+Express y el servidor de Next.js ejecutan las integraciones que requieren credenciales. La interfaz utiliza cookies `HttpOnly`; la API valida firma, caducidad y área de acceso. Las campañas se revisan antes de ejecutarse y sus resultados se registran mediante callbacks.
 
 ## Tecnologías
 
