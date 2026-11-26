@@ -2,9 +2,10 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { cookieName, duration, sign } from './session';
+import { cookieName, serviceCookieName, duration, sign } from './session';
 
 export async function login(form: FormData) {
+  const path = '/gestion-estados';
   const expires = String(Date.now() + duration * 1000);
   let version = '';
   try {
@@ -12,12 +13,17 @@ export async function login(form: FormData) {
     if (response.ok) version = (await response.json()).version || '';
   } catch {}
   const signature = version ? sign(expires + ':' + version) : null;
-  if (!version || !signature) redirect('/gestion-estados/login?error=1');
+  if (!version || !signature) redirect(path + '/login?error=1');
   (await cookies()).set(cookieName, `${expires}.${version}.${signature}`, {
     httpOnly: true, secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax', path: '/gestion-estados', maxAge: duration,
+    sameSite: 'lax', path, maxAge: duration,
   });
-  redirect('/gestion-estados');
+  redirect(path);
+}
+
+export async function logoutService() {
+  (await cookies()).set(serviceCookieName, '', { path: '/servicio-tecnico', maxAge: 0 });
+  redirect('/servicio-tecnico/login');
 }
 
 export async function logout() {

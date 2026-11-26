@@ -31,25 +31,28 @@ El repositorio contiene el frontend, la API y parte de las migraciones. Los fluj
 
 ### Servicio técnico
 
-Entra en **Gestión de estados → Servicio técnico → Avisos**. El recorrido es
-**Recibido → Cobertura revisada → Visita agendada → Parte cerrado**.
+Abre **Servicio técnico** desde el portal corporativo. El módulo tiene inicio de
+sesión propio en `/servicio-tecnico/login`.
 
-La oficina verifica la cobertura al abrir el aviso. Cuando el contrato cubre
-mano de obra y desplazamiento, el cliente paga el material. Fuera de cobertura,
-se desglosan los tres costes. Para garantías de fabricante se confirma quién
-asume cada concepto antes de comunicar el total. Si hay repuesto, se registra
-el almacén o la furgoneta donde se comprobó su disponibilidad. El parte
-recoge el trabajo realizado, los minutos y las piezas utilizadas. Supabase guarda
-cada cambio de estado junto con el historial.
+- **Administración** gestiona avisos, equipos, garantías, contratos, preventivos
+  y agenda. Los presupuestos se guardan por versión y se pueden aceptar o
+  rechazar desde un enlace privado. La agenda requiere la aceptación de la
+  versión vigente cuando hay un importe a cargo del cliente.
+- **Técnicos** consultan las órdenes de su puesto. En el primer acceso de cada
+  jornada registran el nombre y los apellidos. El nombre se conserva aunque
+  cierren sesión y aparece en Administración → Técnicos. La fecha sigue el
+  horario de la agenda.
+- **Visitas y partes** reúnen tiempo, piezas, comprobaciones, fotos y firma.
+  Las visitas incompletas conservan su resultado y permiten agendar otra
+  visita en el mismo aviso. Administración puede confirmar o reprogramar por
+  correo y entregar el PDF desde la ficha del parte.
+- **Por facturar** permite revisar partes cerrados, comprobar qué está cubierto
+  y registrar manualmente la referencia de una factura emitida.
 
-Configura primero la [migración de Avisos](supabase/migrations/202611250001_service_notices.sql)
-en el proyecto Supabase del CRM y las variables de servidor descritas en
-[Instalación y configuración](docs/SETUP.md#gestión-de-estados-y-servicio-técnico).
-En esta versión las comprobaciones de cobertura y stock y la asignación de la
-visita se hacen manualmente. Quedan pendientes las integraciones con inventario,
-calendario y centralita, además de las fotos y la firma en el parte.
-
-El portal `/` presenta los módulos. Las áreas protegidas tienen entradas independientes: `/login`, `/prospeccion-login`, `/bi-login`, `/redes/login`, `/facturas/login` y `/gestion-estados/login`.
+El módulo se ejecuta en el VPS y guarda sus datos en Supabase. Las integraciones
+de inventario y emisión de facturas, incluida una posible conexión con Odoo,
+siguen pendientes. Consulta [Instalación y configuración](docs/SETUP.md#gestión-de-estados-y-servicio-técnico)
+para las variables y el estado del esquema.
 
 ## Arquitectura
 

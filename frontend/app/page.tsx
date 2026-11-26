@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, BriefcaseBusiness, FileCheck2, Network, Search, Workflow } from 'lucide-react';
+import { BarChart3, BriefcaseBusiness, FileCheck2, Network, Search, Workflow, Wrench } from 'lucide-react';
 
 const modules = [
   {
@@ -42,6 +42,14 @@ const modules = [
     icon: FileCheck2,
     accent: 'from-emerald-500 to-emerald-800',
     badge: 'Administración',
+  },
+  {
+    href: '/servicio-tecnico',
+    title: 'Servicio técnico',
+    description: 'Avisos, agenda de técnicos, partes de trabajo, contratos y revisiones preventivas.',
+    icon: Wrench,
+    accent: 'from-sky-600 to-blue-950',
+    badge: 'Postventa',
   },
   {
     href: '/gestion-estados',

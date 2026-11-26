@@ -2,18 +2,21 @@
 
 import { useState } from 'react';
 import { chargeLabels, charges, payerLabels, type Charge, type Payer } from './service-coverage';
+import type { EquipmentWarranty } from './service-warranty';
+import type { ContractTerms } from './service-contract-store';
+import { rateInput } from './service-contract-rules';
 import { coverages } from './service-options';
 
 const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
 
-function Amount({ charge }: { charge: Charge }) {
+function Amount({ charge, rate }: { charge: Charge; rate?: number }) {
   return <label className="block space-y-1 text-sm">
     <span>Importe para el cliente (€)</span>
-    <input name={charge} className={input} inputMode="decimal" maxLength={10} />
+    <input name={charge} className={input} defaultValue={rateInput(rate)} inputMode="decimal" maxLength={10} />
   </label>;
 }
 
-function CoveredCharge({ charge, provider, initial }: { charge: Charge; provider: 'contract' | 'manufacturer'; initial: Payer }) {
+function CoveredCharge({ charge, provider, initial, rate }: { charge: Charge; provider: 'contract' | 'manufacturer'; initial: Payer; rate?: number }) {
   const [payer, setPayer] = useState<Payer>(initial);
   return <div className="space-y-2">
     <label className="block space-y-1 text-sm font-semibold">
@@ -23,12 +26,12 @@ function CoveredCharge({ charge, provider, initial }: { charge: Charge; provider
           <option key={value} value={value}>{payerLabels[value]}</option>)}
       </select>
     </label>
-    {payer === 'customer' && <Amount charge={charge} />}
+    {payer === 'customer' && <Amount charge={charge} rate={rate} />}
   </div>;
 }
 
-export default function CoverageFields() {
-  const [coverage, setCoverage] = useState('');
+export default function CoverageFields({ contract, warranty }: { contract?: ContractTerms; warranty?: EquipmentWarranty }) {
+  const [coverage, setCoverage] = useState(contract && !warranty ? 'Contrato' : warranty && !contract ? 'Garantía de fabricante' : '');
   return <>
     <label className="block space-y-1 text-sm font-semibold">
       <span>Cobertura</span>
@@ -37,21 +40,22 @@ export default function CoverageFields() {
         {coverages.slice(1).map(value => <option key={value} value={value}>{value}</option>)}
       </select>
     </label>
+    {contract && warranty && <p className="text-sm text-slate-600">Hay contrato y garantía vigentes. Elige qué cobertura se aplica a este aviso.</p>}
     {coverage === 'Contrato' && <>
       <label className="block space-y-1 text-sm font-semibold">
         Referencia del contrato
-        <input name="reference" maxLength={250} required className={input} />
+        <input name="reference" defaultValue={contract?.reference} maxLength={250} required className={input} />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1 text-sm font-semibold">Vigente desde
-          <input name="coverageFrom" type="date" required className={input} />
+          <input name="coverageFrom" type="date" defaultValue={contract?.start} required className={input} />
         </label>
         <label className="block space-y-1 text-sm font-semibold">Vigente hasta
-          <input name="coverageUntil" type="date" className={input} />
+          <input name="coverageUntil" type="date" defaultValue={contract?.end} className={input} />
         </label>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        {charges.map(charge => <CoveredCharge key={charge} charge={charge} provider="contract" initial={charge === 'material' ? 'customer' : 'contract'} />)}
+        {charges.map(charge => <CoveredCharge key={charge} charge={charge} provider="contract" rate={contract?.rates?.[charge]} initial={contract?.payers[charge] || (charge === 'material' ? 'customer' : 'contract')} />)}
       </div>
     </>}
     {coverage === 'Fuera de cobertura' && <label className="block space-y-1 text-sm font-semibold">
@@ -67,14 +71,14 @@ export default function CoverageFields() {
     {coverage === 'Garantía de fabricante' && <>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1 text-sm font-semibold">Fabricante
-          <input name="manufacturer" maxLength={250} required className={input} />
+          <input name="manufacturer" defaultValue={warranty?.manufacturer} maxLength={250} required className={input} />
         </label>
         <label className="block space-y-1 text-sm font-semibold">Referencia de autorización
           <input name="reference" maxLength={250} required className={input} />
         </label>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        {charges.map(charge => <CoveredCharge key={charge} charge={charge} provider="manufacturer" initial="pending" />)}
+        {charges.map(charge => <CoveredCharge key={charge} charge={charge} provider="manufacturer" initial={warranty?.payers[charge] || "pending"} />)}
       </div>
     </>}
     {coverage && <p className="text-sm text-slate-600">Deja en blanco un importe pendiente. El total se confirma cuando se conocen todos los conceptos a cargo del cliente.</p>}

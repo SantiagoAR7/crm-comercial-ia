@@ -15,8 +15,13 @@
 | `009_ticket_delivery.sql` | Entrega | Incluido |
 | `010_ticket_test_isolation.sql` | Aislamiento de pruebas | Incluido |
 | `202611250001_service_notices.sql` | Avisos de servicio técnico e historial | Proyecto Supabase CRM |
+| `202611260001_service_technician_days.sql` | Nombre del técnico por puesto y jornada | Proyecto Supabase CRM |
 
 `005` referencia `campaigns` y `campaign_contacts`, que deben existir antes. CRM y Tickets usan proyectos Supabase distintos: no apliques indiscriminadamente todos los archivos al mismo proyecto.
+
+El esquema de producción de Servicio técnico incluye además `service_equipment`,
+`service_contracts`, `service_certificates` y `service_deliveries`. Sus definiciones
+no están incluidas en este repositorio.
 
 ## Preparar otro entorno
 

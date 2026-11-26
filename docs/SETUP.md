@@ -79,12 +79,21 @@ habilita la recuperación, `WORKFLOW_ACCESS_RECOVERY_EMAIL` desde su archivo de
 entorno. El hash se genera con `hashPassword` en `backend/src/services/account-store.js`.
 La recuperación por correo usa las variables de Microsoft Graph del backend.
 
-Para Servicio técnico, aplica `supabase/migrations/202611250001_service_notices.sql`
-al proyecto Supabase del CRM. Configura en el entorno de Compose
-`SERVICE_SUPABASE_URL` y `SERVICE_SUPABASE_SECRET_KEY` con la URL y la clave
-privada de ese proyecto. El frontend solo usa estas variables en el servidor.
-La migración restringe el acceso a la cuenta de servicio y guarda el historial
-en la misma transacción que cada cambio de etapa.
+Para Servicio técnico, configura `SERVICE_SUPABASE_URL` y
+`SERVICE_SUPABASE_SECRET_KEY` con la URL y la clave privada del proyecto CRM.
+El servidor de Next.js usa ambas variables. Configura
+`SERVICE_TECHNICIAN_ACCOUNTS` como un arreglo JSON de cuentas con `username`,
+`role`, `salt` y `hash`. Las cuentas con rol `technician` requieren también
+`technicianId`, el identificador estable del puesto. Los nombres de jornada se
+guardan como datos operativos y nunca forman parte de las credenciales.
 
-La primera versión registra la comprobación manual de cobertura, importe y
-disponibilidad. La asignación y el cierre son acciones del equipo desde el CRM.
+Aplica las migraciones de avisos y jornadas al proyecto CRM según el estado del
+esquema. Las tablas operativas de equipos, contratos, certificados y entregas
+ya existen en producción. Consulta el [estado de las migraciones](../supabase/README.md)
+antes de preparar otro entorno.
+
+Configura el mismo `SERVICE_DELIVERY_SECRET` de al menos 32 caracteres en
+Next.js y Express. El backend usa las variables de Microsoft Graph para enviar
+desde el buzón corporativo. El endpoint interno predeterminado es
+`http://crm-api:4000/api/service-delivery` y se puede configurar mediante
+`SERVICE_DELIVERY_ENDPOINT`.

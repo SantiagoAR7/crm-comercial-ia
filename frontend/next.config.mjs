@@ -1,6 +1,7 @@
 const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
 const nextConfig = {
+  serverExternalPackages: ['pdfkit'],
   experimental: {
     agentUpgrade: 'security',
   },

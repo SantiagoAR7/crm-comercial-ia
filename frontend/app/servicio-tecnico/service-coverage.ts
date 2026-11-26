@@ -43,6 +43,13 @@ export function validCoverageDate(value: string) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+export function canScheduleWithQuote(notice: Pick<import('./service-store').ServiceNotice,
+  Charge | 'payers' | 'quotes'>) {
+  const total = priceForCustomer(notice.payers, notice);
+  const latest = notice.quotes?.at(-1);
+  return total !== null && (latest ? latest.decision?.outcome === 'accepted' : total === 0);
+}
+
 export function priceForCustomer(
   payers: Payers | undefined,
   amounts: Record<Charge, number | null>,
@@ -57,4 +64,8 @@ export function priceForCustomer(
     total += amount;
   }
   return total;
+}
+
+export function quoteDeliveryInProgress(delivery: { state: string; at: string } | undefined) {
+  return delivery?.state === 'sending' && Date.now() - Date.parse(delivery.at) < 120_000;
 }

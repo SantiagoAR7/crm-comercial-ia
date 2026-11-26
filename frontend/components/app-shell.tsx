@@ -10,7 +10,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const standalone = ['/gestion-estados', '/recuperar-acceso'].some(path =>
+  const standalone = ['/gestion-estados', '/recuperar-acceso', '/servicio-tecnico'].some(path =>
     pathname === path || pathname.startsWith(path + '/')
   );
 
