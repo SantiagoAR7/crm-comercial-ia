@@ -275,6 +275,12 @@ export default function BiPage() {
       const sessionBody = await sessionResponse.json();
       const overviewBody = await overviewResponse.json();
 
+      if (sessionResponse.status === 401) {
+        await fetch('/api/bi/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        window.location.replace('/bi-login');
+        return;
+      }
+
       if (!sessionResponse.ok) throw new Error(sessionBody.error || 'Sesión BI no válida.');
       if (!overviewResponse.ok) throw new Error(overviewBody.detail || overviewBody.error || 'No se pudo cargar el panel BI.');
 
